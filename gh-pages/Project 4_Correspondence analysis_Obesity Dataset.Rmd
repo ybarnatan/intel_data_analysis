@@ -1,0 +1,326 @@
+---
+title: "AID 2025 - Project 4 - Correspondence Analysis"
+subtitle: ""
+author: "Yair B. Barnatan"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: cerulean
+    toc: true
+    toc_float:
+      collapsed: true
+    highlight: tango       
+    code_folding: hide     
+---
+
+
+# *Aim*
+
+The goal of this practical assignment is to apply data analysis and machine learning techniques to predict obesity risk factors using the Obesity Risk Prediction Dataset available on Kaggle. The dataset contains various features such as demographic, lifestyle, and physical health information, which can be used to build a predictive model to assess an individual's risk of obesity.
+
+
+# *Import libraries*
+```{r , warning=FALSE, error=FALSE, message=FALSE}
+library(ggplot2)
+library(tidyverse)
+library(FactoMineR)
+library(factoextra)
+library(readr)
+library(dplyr)
+library(knitr) 
+library(kableExtra)
+library(gmodels)
+```
+
+
+
+
+# *Data loading*
+```{r, warning=FALSE, error=FALSE, message=FALSE}
+pathBase = dirname(rstudioapi::getSourceEditorContext()$path)
+df = read_csv(paste0(pathBase,"/obesidad_train_kaggle.csv"))
+```
+
+* This practical assignment will be based on the **Obesity Risk Prediction** dataset from [Kaggle](https://www.kaggle.com/code/ugurcan95/obesity-risk-prediction/input?select=train.csv).
+
+* The file used is **train.csv** from that source.
+
+* The seed is set using the last 3 digits of the DNI to obtain a sample of _N_IND_ individuals.
+
+
+```{r}
+set.seed(499) 
+N_IND = 2000
+obesidad <- df %>% sample_n(N_IND) 
+
+obesidad[c("Age", "Height", "Weight")] <- lapply(obesidad[c("Age", "Height", "Weight")], function(x) as.numeric(as.character(x)))
+excluir <- c("Age", "Weight", "Height", "id", "FCVC", "NCP", "CH2O", "FAF", "TUE")
+obesidad[ , !(names(obesidad) %in% excluir)] <- lapply(obesidad[ , !(names(obesidad) %in% excluir)], as.factor)
+
+names(obesidad)[names(obesidad) == "NObeyesdad"] <- "cat_obeso"
+attach(obesidad)
+```
+
+
+# *1.- Dependence Between Two Categorical Variables*
+
+**Task:** Select two categorical variables. Is there dependence between the selected variables?
+
+### 1a) Pair: MTRANS and cat_obesidad
+
++ For this part of the analysis, I selected the variables `MTRANS` (most frequently used mode of transportation [mode]) and `cat_obesidad` (obesity category).
++ To assess whether these variables are dependent or not, I formulate the following hypothesis test with α = 0.05 (this α level is adopted for the entire analysis), using the Chi² test:
+
+  * **H0:** Mode of transportation and obesity category are independent variables.
+  * **H1:** The categorical variables are dependent.
+
+
+  
+```{r}
+tabla <- table(obesidad$MTRANS, obesidad$cat_obeso)
+```
+
+```{r}
+kable(tabla, escape = FALSE, caption = "Contingency table between MTRANS and cat_obesidad") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+```
+
+### Check of assumptions:
+
+- The sample size *n* must be greater than 50 → **Met**  
+- Observations must be independent → **Assumed to be met** by study design  
+- Expected frequencies must be greater than 5. A maximum of 20% of cells with expected frequencies less than 5 is allowed → **Not met** → The category **"Bike"** is removed from the analysis due to the very low number of observations.  
+- It is worth noting that initially *N_IND = 500* was proposed; however, this resulted in several other categories with very low frequency, so the sample size was increased to the value chosen above.
+
+
+
+```{r}
+obesidad_sin_bike <-obesidad[trimws(tolower(obesidad$MTRANS)) != "bike", ] 
+obesidad_sin_bike$MTRANS <- factor(obesidad_sin_bike$MTRANS)
+tabla_sin_bike <- table(obesidad_sin_bike$MTRANS, obesidad_sin_bike$cat_obeso)
+```
+
+
+```{r}
+kable(tabla_sin_bike, 
+      caption = "Contingency table between MTRANS and cat_obesidad excluding BIKE ") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+```
+
+
+
+```{r}
+print(chisq.test(tabla_sin_bike))
+```
+
+
++ **Statistical decision rule**: Since *p-value < α*, we reject *H₀*.  
++ **Decision rule and analysis in terms of the problem**: The variables are **not independent**, meaning that the obesity category depends (at least in part) on the mode of transportation—or vice versa. This **does not imply causality**, but it does indicate an **association**: certain transportation methods are more commonly associated with specific obesity categories.
+
+### 1b) Row profile analysis
+
+
+
+
+```{r, fig.align='center', fig.width= 8, fig.height=4}
+perfil_fila <- prop.table(tabla_sin_bike, margin = 1)
+
+DF<- as.data.frame(perfil_fila)
+DF$fila <- rownames(perfil_fila)
+DF <- DF %>% select(-Var1)
+colnames(DF) <- c( 'columna', 'proporcion','fila')
+
+perfil_fila_medio <- colMeans(perfil_fila)
+perfil_fila_medio_DF <- data.frame(fila = "Promedio filas",
+                                   columna = names(perfil_fila_medio),
+                                   proporcion = as.numeric(perfil_fila_medio))
+
+DF_plot <- rbind(DF, perfil_fila_medio_DF)
+
+
+ggplot(DF_plot, aes(x = columna, y = proporcion, group = fila)) +
+  geom_line(data = subset(DF_plot, fila != "Mean rows"),aes(color = fila),linewidth = 1) +
+  geom_line(data = subset(DF_plot, fila == "Mean rows"),color = "black", linetype = "dashed", linewidth = 1.2) +
+  labs(title = "Row profile with mean row profile dashed",x = " ",y = "Relative frequency",color = "Row") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+
+```
+
+Analysis:
+
+* If independence holds, the row profiles will be homogeneous and similar to the average profile (dotted line).
+* As seen in the plot, this is not the case. For the different obesity categories, the profiles are not parallel and there are several crossings.
+* An equivalent analysis could be done by observing the column profiles and the average column profile.
+
+
+# *2.- Simple Correspondence Analysis*
+
+Task: Perform a Simple Correspondence Analysis with the variables selected in point 1. Show the biplot and interpret the results. What do the main dimensions indicate? What associations are observed between the categories of the variables?
+
+### 2a) Inertia
+
+
+```{r}
+obesidad.ca <- CA(tabla_sin_bike, graph = FALSE)
+```
+
+
+```{r}
+dist_filas <- rowSums(obesidad.ca$row$coord^2)
+dist_columnas <- rowSums(obesidad.ca$col$coord^2)
+
+df_dist_filas <- data.frame(
+  Categoria = rownames(tabla_sin_bike),
+  Distancia_Chi2 = dist_filas,
+  Tipo = "Fila"
+)
+
+df_dist_columnas <- data.frame(
+  Categoria = colnames(tabla_sin_bike),
+  Distancia_Chi2 = dist_columnas,
+  Tipo = "Columna"
+)
+
+df_dists <- bind_rows(df_dist_filas, df_dist_columnas)
+```
+
+
+```{r, fig.align='center', fig.width= 10, fig.height= 4}
+ggplot(df_dists, aes(x = reorder(Categoria, Distancia_Chi2), y = Distancia_Chi2, fill = Tipo)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~Tipo, scales = "free") +
+  coord_flip() +
+  labs(title = "Chi2 distances for row and columns", x = "", y = "Chi2 distance to mean profile") +
+  scale_fill_manual(values = c("Columna" = "skyblue", "Fila" = "orange")) + 
+  theme_minimal()
+```
+
+
+Analysis:
+
+* The chi² distance to the average profile measures how much each row or column contributes to the total variability (inertia).
+* Based on this, it can be seen that among the obesity categories, Type II and III obesity contribute the most inertia, while among transportation methods, the highest inertia is for Walking, followed by Automobile, and the lowest is for Public_Transportation.
+
+
+### 2b) Biplot
+
+
+
+
+```{r, fig.align='center', fig.width= 6, fig.height=6}
+fviz_ca_biplot(obesidad.ca,
+               col.row = "#0072B2",    
+               col.col = "#D55E00",   
+               fill.ind = "lightblue",
+               fill.var = "salmon",
+                geom.ind = list(shape = 5, size = 4),  
+               geom.var = list(shape = 24, size = 4),   
+               label = "all"  )  +       
+  labs(title = "",x = "Dimension 1",y = "Dimension 2") +
+  theme_minimal(base_size = 13) +     
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0.5),
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 16),
+    legend.position = "bottom")
+
+```
+
+
+
+```{r, fig.align='center', fig.width= 3, fig.height=4}
+fviz_screeplot(obesidad.ca, addlabels = TRUE)+
+ theme(axis.text.x = element_text(angle=0)) + 
+  labs(title = 'Scree plot - Simple Correspondence Analysis',  x = 'Dimension', y = 'Explained Inertia')
+```
+
+
+
+Analysis of the Biplot and Screeplot:
+
+* The greater the distance from the origin, the greater the contribution to the lack of independence.
+* The screeplot allows analyzing how much of the inertia is explained by each of the two dimensions of the correspondence analysis.
+* Based on this, it can be said that the categories Automobile and Walking contribute the most to the lack of independence in terms of dimension 1 and 2 of the biplot, respectively.
+* Additionally, it is possible to analyze which variables are associated by proximity or clustering: observing dimension 1 axis, positive values group Automobile with different types of obesity and overweight; that is, these are associated with each other.
+* The fact that several columns (in orange) are close to each other indicates they share similar response patterns (e.g., Insufficient and Normal Weight or Overweight Level I and Overweight Level II).
+* Interestingly, the highest obesity level (Obesity Type III) is not directly associated with any transportation method (probably because the transportation method is not the sole cause, as mentioned above, of extreme obesity).
+
+
+# *3.- Multiple Correspondence Analysis (MCA)*
+
+Task: Perform a Multiple Correspondence Analysis (MCA) using at least 4 categorical variables. Consider discretizing quantitative variables. Which variables contribute the most to the main dimensions? Show the biplot and interpret the results. Conclude.
+
+
+
+
+
+```{r}
+obe = obesidad[trimws(tolower(obesidad$MTRANS)) != "bike", ]
+obe$MTRANS <- factor(obe$MTRANS)
+
+
+obe$Age_cat <- cut(obe$Age,
+  breaks = c(0, 18, 35, 50, Inf),
+  labels = c("≤18", "19–35", "36–50", "≥51"),
+  right = FALSE)  
+
+obe$Height_cat <- cut(obe$Height,
+  breaks = c(0, 1.5, 1.65, 1.8, Inf),
+  labels = c("Low", "Mid-low", "Mid-high", "High"),
+  right = FALSE)
+
+obe = obe[, c('Age_cat', 'Height_cat', 'MTRANS', 'cat_obeso')]
+rownames(obe) <- NULL
+obe.MCA <- FactoMineR::MCA(obe, graph = FALSE)
+```
+
+```{r}
+summary(obe.MCA)
+```
+
+
+Analysis of the summary:
+
+* Eigenvalues: inertia explained by each dimension (how much each axis contributes). -> In MCA, the inertia is much more spread across the axes than in simple correspondence analysis; the first two dimensions explain less than 25% of the total inertia.
+
+* Variables: which variables contribute most to each dimension.
+
+* Categories: which levels are most associated with each axis.
+
+
+```{r, fig.align='center', fig.width= 7, fig.height=7}
+fviz_mca_biplot(obe.MCA, 
+                axes = c(1, 2),
+                label="var",
+                repel = TRUE,
+                invisible="quali") +
+    ggtitle("Biplot Multiple Correspondence Analysis - Dim. 1 vs Dim. 2")
+
+```
+
+
+```{r, fig.align='center', fig.width= 7, fig.height=7}
+fviz_mca_biplot(obe.MCA, 
+                axes = c(2, 3),
+                label="var",
+                repel = TRUE,
+             invisible="quali") +
+      ggtitle("Biplot Multiple Correspondence Analysis - Dim. 2 vs Dim. 3")
+
+```
+
+
+```{r, fig.align='center', fig.width= 7, fig.height=4}
+fviz_screeplot(obe.MCA, addlabels = TRUE) +
+  theme(axis.text.x = element_text(angle=0)) + 
+  labs(title = 'Scree plot Multiple Correspondence Analysis',  x = 'Dimension', y = 'Explained Inertia')
+```
+
+
+
+Analysis of the Biplot and Screeplot:
+
+* On axis 1, the biplot suggests that the levels with the greatest inertia are Automobile, and the age categories 36-50 and ≥51 (the higher age ranges). Additionally, these variables are associated with each other.
+* On axis 2, the highest inertia is held by the transport mode Walking, short height, and being under 18 years old. These variables are also associated with each other.
+* As mentioned, axes 1 and 2 together explain about 25% of the inertia, so no extremely clear or outstanding associations are expected (nor observed) between the categorical variable levels and the different overweight categories.
+* To deepen the analysis, a second biplot was plotted (showing the categories in the two-dimensional space defined by the 2nd and 3rd MCA axes). Although the 3rd axis accounts for around 10% of the explained inertia, it allows us to see that individuals of tall height appear moderately associated with Obesity Type II levels.

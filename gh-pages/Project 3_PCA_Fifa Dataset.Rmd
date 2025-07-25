@@ -1,0 +1,664 @@
+---
+title: "AID 2025 - Project 3 - Principal Component Analysis"
+subtitle: ""
+author: "Yair B. Barnatan"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: cerulean
+    toc: true
+    toc_float:
+      collapsed: true
+    highlight: tango       
+    code_folding: hide     
+---
+
+
+# *Aim*
+
+
+The aim of this project is to apply Principal Component Analysis (PCA) to linearly reduce the dimensionality of the FIFA 2024 Men dataset, identify patterns in the data, and visualize how players are grouped based on their characteristics.
+
+Data source: provided by course teaching staff.
+
+
+# *Import libraries*
+
+```{r , warning=FALSE, error=FALSE, message=FALSE}
+library(ggplot2)
+library(tidyverse)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(knitr) 
+library(kableExtra)
+library(ggpubr)
+library(purrr)
+library(corrplot)
+library(viridis)
+library(grid)
+library(factoextra)
+library(ggfortify)
+
+```
+
+
+
+# *Data loading*
+
+```{r, warning=FALSE, error=FALSE, message=FALSE}
+pathBase = dirname(rstudioapi::getSourceEditorContext()$path)
+df = read_csv(paste0(pathBase,"/player_stats.csv"))
+```
+
+For this practical assignment, I will work with the FIFA 2024 MEN dataset. I set the random seed for reproducibility to obtain a sample of 2000 individuals.
+
+```{r}
+set.seed(499) 
+N_IND = 2000
+fifa <- df %>% sample_n(N_IND) 
+attach(fifa)
+```
+
+# *Exploratory Data Analysis and Preprocessing*
+
+## 2.1 – Analyze the presence of missing values and duplicate data.
+
+### 2.1.a. Missing values
+
+
+```{r}
+NA_por_col = data.frame(colSums(is.na(fifa)))
+colnames(NA_por_col) <- "NAs"
+
+NA_por_col  %>%
+  kable(caption = "Number of NAs", format = "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+  row_spec(which(NA_por_col$NAs > 0), background = "lightblue")
+```
+
+Analysis:
+
+  + There are 66 missing values in the 'marking' column  
+  + Decision: I remove those rows since they represent only 3.3% of the data.
+
+### 2.1.b. Duplicate values
+
+```{r}
+sum(any(duplicated(fifa))) 
+```
+
+I have 0 duplicate rows.
+
+
+
+## 2.2 – Select a relevant subset of variables to perform PCA. Justify the selection.
+
+I must select a subset of attributes to carry out the PCA. To do this, it's important to choose numerical variables that are not too highly correlated with each other. Additionally, the variables must be scalable (normalized or standardized) so that each one has the same weight in the analysis (I do not assume any variable is more important than the others a priori).
+
+In the case of FIFA players, the following variables may be relevant for PCA:
+
+ * *Player characteristics:* age, height, weight.
+ * *Technical skills:* ball_control, dribbling, aggression, reactions, crossing, short_pass, long_pass, penalties, gk_reflexes, gk_positioning, gk_kicking (I include some variables to represent goalkeeper abilities).
+ * *Physical skills:* acceleration, stamina, strength, balance, sprint_speed, heading, finishing.
+
+
+```{r}
+fifa_subset <- fifa[, c('age', 'height', 'weight',
+                        'ball_control', 'dribbling', 'aggression', 'reactions', 'crossing', 
+                        'short_pass', 'long_pass', 'penalties', 'gk_reflexes', 'gk_positioning', 'gk_kicking',
+                        'acceleration', 'stamina', 'strength', 'balance', 'sprint_speed', 'heading', 'finishing')]
+```
+
+
+## 3 – Provide a description of the selected numerical variables.
+
+### 3a. Player characteristics
+
+
+```{r, fig.align = 'center', fig.width = 8, fig.height = 3}
+hist_1 <- ggplot(fifa_subset, aes(x = age)) +
+  geom_histogram(binwidth = 1, fill = "lightblue", color = "black") +
+  labs(title = "a) Age Histogram", x = "Age (years)", y = "Frequency") +
+    geom_vline(aes(xintercept = median(age, na.rm = TRUE)),
+             linetype = "dashed", color = "black", size = 1) +
+  theme_minimal()
+```
+
+```{r}
+min(fifa_subset$age) # youngest
+max(fifa_subset$age) # oldest
+median(fifa_subset$age) # median
+```
+
+```{r}
+scatter_1 <- ggplot(fifa_subset, aes(x = weight, y = height)) +
+  geom_point(color = "red") +
+  labs(title = "b) Scatterplot de Weight vs Height", x = "Weight (kg)", y = "Height (cm)") +
+  theme_minimal()
+
+ggarrange(hist_1, scatter_1, nrow=1, ncol=2)
+
+```
+
+Analysis:
+
+* The histogram of player ages shows a distribution ranging from 17 to 41 years. The distribution is not completely symmetrical, as the highest frequency of player ages is around 26 years (median, dashed line).
+* The scatterplot of height vs. weight shows a clear positive correlation (which is expected since taller players tend to weigh more).
+
+### 3b. Technical and physical skills
+
+
+```{r, fig.align='center', fig.width= 8, fig.height=8}
+
+variables <- c('ball_control', 'dribbling', 'aggression', 'reactions', 'crossing', 
+               'short_pass', 'long_pass', 'penalties', 'gk_reflexes', 'gk_positioning', 'gk_kicking',
+               'acceleration', 'stamina', 'strength', 'balance', 'sprint_speed', 'heading', 'finishing')
+
+fifa_subset_hist = fifa_subset
+fifa_subset_hist$id <- 1:nrow(fifa_subset)
+
+data_longer <- fifa_subset_hist %>%
+  select(id, all_of(variables)) %>%
+  pivot_longer(cols = -id, names_to = "variable", values_to = "value")
+
+ggplot(data_longer, aes(x = value)) +
+  geom_histogram(binwidth = 5, fill = "steelblue", color = "white") +
+   facet_wrap(~ variable, scales = "free",
+             labeller = labeller(variable = function(x) toupper(x))) +
+  labs(title = "Histograms per tech./phys. player´s attribute",
+       x = "", y = "Frequency") +
+  theme_minimal() +
+  theme(strip.text = element_text(color = "blue", face = "bold"))
+
+```
+
+Analysis of histograms of players' physical-technical attributes:
+
++ The histograms allow analyzing the distribution of each of the players' physical and technical variables. For example, some show unimodal trends (acceleration, aggression, balance) and others bimodal (dribbling, heading) with generally asymmetric distributions (except reactions and strength).
++ For goalkeeper-related variables, the bars with very low relative frequency observed in the 3 panels clearly represent players who usually play in this position (since they have high attribute values). In comparison, most players are field players (i.e., high relative frequency) and thus have low attribute values.
++ Note: this is a univariate analysis and as more and more variables are added, it becomes less interpretable. That is why it is useful to use multivariate and dimensionality reduction methods.
+
+### 3b extra. Technical and physical skills - outliers
+
+
+```{r, fig.align='center', fig.width= 8, fig.height=8}
+data_long <- fifa_subset |> 
+             select(c('ball_control', 'dribbling', 'aggression', 'reactions', 'crossing', 
+                        'short_pass', 'long_pass', 'penalties', 'gk_reflexes', 'gk_positioning', 'gk_kicking',
+                      'acceleration', 'stamina', 'strength', 'balance', 'sprint_speed', 'heading', 'finishing')) |> reshape2::melt()
+
+
+ggplot(data_long, aes(x=variable, y=value)) + 
+    geom_boxplot() +
+    facet_wrap(~variable, scale="free") +
+   labs(
+    title = "Boxplot for tech./phys. features", x = "",   y = "") +
+  theme_minimal() + 
+  theme(
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),  
+    axis.title = element_text(size = 12),  
+    axis.text = element_blank(),
+    strip.text = element_text(size = 12, face = "bold"), 
+    legend.title = element_text(size = 12), 
+    legend.text = element_text(size = 10), 
+    plot.margin = margin(10, 10, 10, 10)
+    )
+
+```
+
+
+```{r}
+# Function to count number of outliers in a column
+count_outliers <- function(column) {
+  Q1 <- quantile(column, 0.25, na.rm = TRUE)
+  Q3 <- quantile(column, 0.75, na.rm = TRUE)
+  IQR_value <- IQR(column, na.rm = TRUE)
+  
+  lower_bound <- Q1 - 1.5 * IQR_value
+  upper_bound <- Q3 + 1.5 * IQR_value
+  
+  outliers <- sum(column < lower_bound | column > upper_bound, na.rm = TRUE)
+  return(outliers)
+}
+
+outliers_count <- sapply(fifa_subset, function(x) if(is.numeric(x)) count_outliers(x) else NA)
+
+data.frame(outliers_count)  %>%
+  kable(caption = "Number of outliers per column in fifa_subset", format = "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+```
+
+Analisis:
+
+* The set of boxplots for players' technical skills shows the presence of outliers for most of the selected variables.
+* Decision: do not remove them for now, since as shown, they represent a large portion of the dataset. (The presence of outliers will be important in section 8 where robust PCA methodologies [i.e., robust against outliers] are applied)
+
+
+### 3c. Correlation matrix
+
+
+
+```{r, fig.align='center', fig.width= 10, fig.height=10}
+m_cor <- cor(fifa_subset) 
+
+corrplot(m_cor, method="circle", type = "upper", diag= FALSE,
+          addCoef.col = "black", tl.col = "black", tl.srt = 45, number.cex = 0.7,  col = viridis(30))
+```
+Analysis:
+
+From the correlation matrix I can study:
+
+* Highly correlated variables (both positively and negatively): values close to 1 or -1 with colors close to yellow or blue, the extremes of the scale.
+* Uncorrelated or moderately correlated variables: values close to 0, with green or bluish-green colors on the scale.
+
+
+## 4- Were the variables standardized? Justify.
+
+Analysis:
+
++ The correlation plot per se shows exactly that: the linear correlation between variables.
+
++ To standardize, the scale() command must be run beforehand.
+
++ For this practical work, in the next step (PCA and interpretation), I must standardize the variables since they are in different units and I also want to avoid giving greater weight to one variable over another.
+
+
+# *PCA and interpretation.*
+
+## 5- Perform PCA on the selected variables. How many components do you decide to keep after dimensionality reduction?
+
+To run a PCA I must:
+
++ Standardize the data
++ Calculate the correlation or covariance matrix [in this case I use correlation since the variables have different units and I don’t want to give preferential weight to one over the others]
++ Obtain eigenvalues and eigenvectors
++ Select number of principal components (PCs)
++ Project the original data onto the new set of synthetic PCs
++ Interpret the results
+
+Note: it is advisable that the variables introduced in the PCA are correlated; if not, running PCA will not add any value to the analysis.
+
+
+
+```{r}
+# Standardize the data
+fifa_subset_scaled = data.frame(scale(fifa_subset))
+M_corr = cor(fifa_subset_scaled)
+traza = sum(diag(M_corr)) 
+traza
+```
+
+
+```{r}
+pca <- prcomp((fifa_subset), scale = TRUE) 
+round(pca$rotation,2) |> knitr::kable(format = "html") |>  kable_styling() 
+```
+
+```{r, fig.align='center', fig.width= 6, fig.height=6}
+contrib <- as.matrix(round(pca$rotation,2))
+corrplot(contrib,is.corr=FALSE,  col = viridis(30))
+```
+
+### 5a. Loading analysis: indicates the importance or weight of each original variable on each of the new PCs.
+
+The loading can also be viewed by component, which allows better discerning which variables weigh more on each component. For illustrative purposes, the first 3 PCs are shown.
+
+
+```{r, fig.align='center', fig.width= 10, fig.height=10}
+carga1 = data.frame(cbind(X=1:length(fifa_subset), primeracarga=data.frame(pca$rotation)[,1]))
+carga2 = data.frame(cbind(X=1:length(fifa_subset), segundacarga=data.frame(pca$rotation)[,2]))
+carga3 = data.frame(cbind(X=1:length(fifa_subset), terceracarga=data.frame(pca$rotation)[,3]))
+
+barplot_1 = ggplot(carga1, aes(colnames(fifa_subset), primeracarga)) + 
+       geom_bar (stat="identity" , position="dodge" , fill ="blue" , width =0.5) + 
+        xlab( '') + ylab('Loading') + ggtitle("a) Loading PC 1") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 25, hjust = 1)) 
+
+barplot_2 = ggplot(carga2, aes(colnames(fifa_subset), segundacarga)) + 
+       geom_bar (stat="identity" , position="dodge" , fill ="blue" , width =0.5) + 
+        xlab( '') + ylab('Loading') + ggtitle("b) Loading PC 2") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 25, hjust = 1)) 
+
+barplot_3 = ggplot(carga3, aes(colnames(fifa_subset), terceracarga)) + 
+       geom_bar (stat="identity" , position="dodge" , fill ="blue" , width =0.5) + 
+        xlab( 'Variable') + ylab('Loading') + ggtitle("c) Loading PC 3") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 25, hjust = 1)) 
+
+ggarrange(barplot_1, barplot_2, barplot_3, ncol = 1, nrow=3)
+
+```
+ 
+ 
+### 5b. Eigenvalue analysis - selection of the number of components
+
+There is no single criterion, and in some cases the determination of the cutoff point is arbitrary and set by the researcher (as in criterion 1). Therefore, the strategy is to perform more than one method of analysis to determine the number of PCs to select for analysis and interpretation in terms of the problem being studied.
+
+#### Criterion 1: % of explained variance
+
+The researcher selects a priori how many PCs to retain.
+
+
+```{r}
+pca$sdev^2 
+prop_varianza <- pca$sdev^2 / sum(pca$sdev^2)
+prop_varianza
+```
+
+
+```{r}
+p_var = data.frame(prop_varianza = prop_varianza,
+                   PC = 1:length(prop_varianza))
+
+porc_var = ggplot(data = p_var, aes(x = PC, y = prop_varianza)) +
+  geom_col(width = 0.8, fill='gold') +
+  theme_bw() +
+  labs(x = "PC", y = "Proportion of \nthe explained variance") 
+
+
+prop_varianza <- pca$sdev^2 / sum(pca$sdev^2)
+prop_varianza_acum <- cumsum(prop_varianza)
+
+porc_var_acum = ggplot(data = p_var, 
+       aes(x = PC, y = prop_varianza_acum, group = 1)) +
+  geom_point( color='gold', size=2, alpha=0.8) +
+  geom_line(color='black', size=0.5) +
+  theme_bw() +
+  labs(x = "PC", y = "Cummulative proportion of \nthe explained variance")+
+  ggtitle("a) Cumulative explained variance proportion by PC\nInset: Explained variance proportion")
+
+# Combinar ambos gráficos
+inset_grob <- ggplotGrob(porc_var)
+prop_var_c_inset = porc_var_acum + annotation_custom(grob = inset_grob, xmin = 7, xmax = 20, ymin = 0.55, ymax = 0.85)
+```
+
+#### Criterion 2: Kaiser Criterion
+
+This consists of selecting PCs whose eigenvalues are >= 1.
+
+
+```{r}
+AV = data.frame(autoval = pca$sdev^2, PC = 1:length(pca$sdev^2))
+
+kaiser = ggplot(data = AV , aes(x = PC, y = autoval)) +
+  geom_col(width = 0.8, fill='orange') +
+  theme_bw() +
+  labs(x = "PC", y = "Autovalue")+
+  ggtitle("b) Kaiser's criterion") +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "black", size = 1) 
+
+
+```
+
+
+#### Criterion 3: Broken Stick Criterion or Scree Plot
+
+This consists of keeping all the PCs that consistently produce a decrease in the % of unexplained variability. If adding more PCs does not reduce the % of variability left to explain, it makes no sense to keep adding PCs, as it only complicates the analysis.
+
+
+```{r}
+baston = fviz_eig(pca, ncp = traza, addlabels = TRUE, main="c) Broken stick criterion", barfill = "red") +
+  xlab("PC") + 
+  ylab("PExplained variance percentage (%)")  +
+  ylim(0,60)
+```
+
+
+```{r, fig.align='center', fig.width= 8, fig.height=10}
+ggarrange(prop_var_c_inset, kaiser, baston, ncol=1, nrow=3)
+```
+
+Analysis of the number of PCs to select:
+
+  * a) Number of PCs set a priori: Ideally, one would select between 2 and 4 to maintain a reasonably good interpretability of the model (if I have to explain my data with 10 PCs, it would be as if I hadn't done PCA). Based on what was seen, 4 would be fine.
+  * b) Kaiser criterion: the first 3 components have eigenvalues > 1, reducing the selection to 3 PCs.
+  * c) Consistent with plot b, preserving components beyond the third does not produce significant changes in residual variability.
+  * Decision: I would select PC1, PC2, and PC3 to continue the analysis.
+  
+  
+  
+## 6- Interpret the factor loadings of the first two principal components. Which player attributes are most represented in each component? Show the PCA biplot.
+.
+
+```{r, fig.align='center', fig.width= 8, fig.height=6}
+#Loading of variables on PC1 y PC2
+ggarrange(barplot_1, barplot_2,  ncol = 1, nrow=2)
+```
+
+
+```{r, fig.align='center', fig.width= 5, fig.height=5}
+# Biplot PC1 and PC2
+autoplot(pca, 
+         data = fifa_subset, 
+         loadings = TRUE, 
+         loadings.colour = 'black',
+         loadings.label = TRUE, 
+         loadings.label.size = 5) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "orange", size=2, alpha=0.75) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "orange", size=2, alpha=0.75)+
+    theme_bw() 
+```
+
+Analysis:
+
++ The factor loadings of the variables on the first two PCs involve analyzing the weight or influence of these variables on each of the synthetic components generated by PCA.
+
++ *PC1:* This component shows that almost all variables either correlate positively or negatively; there are a few with little or no weight (age, strength). Those that correlate positively refer to attributes of players who play as goalkeepers (gk_kicking, gk_positioning, gk_reflexes). Those that correlate negatively are all important for field players. It was expected that since the distinction between field player vs. goalkeeper is very noticeable in the development of the game and player movements, these variables are key when grouping players. The interpretability given to PC1 is to suggest a grouping of players based on their position on the field (goalkeeper vs. field player).
+
++ *PC2:* The second component allows analyzing what happens once I distinguish according to PC1 (i.e., field player or goalkeeper) and mostly has variables that correlate negatively or have no correlation. Analyzing those that correlate most negatively, what adds to the grouping of players are: age, aggression, heading, weight, strength, and height. That is, players seem to group according to their age, physical characteristics of height and weight (player-specific traits), and based on their aggressiveness in play, heading ability, and strength applied during play (technical characteristics).
+
++ A similar analysis can be done by observing the *biplot*, which shows the data in the reference frame of the first two PCs (each showing the % of total variability explained by the data). Horizontal and vertical lines crossing at (0,0) were added to facilitate interpretation of what correlates positively and negatively with respect to each PC. As mentioned earlier, there is a clear separation in the data that probably corresponds to the differentiation between field player vs. goalkeeper (horizontal separation, related to PC1). The weight of each variable can be seen as the vector it forms with respect to (0,0) and its loading as the orthogonal projection onto each of the PCs.
+
+
+
+```{r, fig.align='center', fig.width= 5, fig.height=5}
+#Same biplot but specifying cloud of datapoints pertaining to field players vs goalkeepers
+generar_elipse <- function(cx, cy, rx, ry, n = 100) {
+  t <- seq(0, 2 * pi, length.out = n)
+  data.frame(
+    x = cx + rx * cos(t),
+    y = cy + ry * sin(t)
+  )
+}
+
+elipse_campo =  generar_elipse(cx = 0, cy = 0, rx = 0.03, ry = 0.06)
+elipse_arquero = generar_elipse(cx = 0.06, cy = 0, rx = 0.015, ry = 0.04)
+
+autoplot(pca, data = fifa_subset) +
+  geom_path(data = elipse_campo, aes(x = x, y = y), color = "violet", linetype = "dashed", size=1.5) +
+  annotate("text", x = -0.03 , y = 0.06, label = "Field player", size = 5, fontface = "bold") +
+  geom_path(data = elipse_arquero, aes(x = x, y = y), color = "orange", linetype = "dashed", size=1.5) +
+  annotate("text", x = 0.06 , y = 0.05, label = "Goalkeeper", size = 5, fontface = "bold") +
+  coord_equal() +
+    theme_bw() 
+```
+
++ Note: To simplify the problem, in this item only PC1 and PC2 are requested to be analyzed, and that is what is done (in light of the analysis in item 5).
+
+## 7- Identify if there are natural groupings of players based on the selected characteristics. Interpret and conclude.
+
+
+```{r, fig.align='center', fig.width= 10, fig.height=5}
+fifa_subset_y_paises = fifa[, c('country', 'age', 'height', 'weight',
+                        'ball_control', 'dribbling', 'aggression', 'reactions', 'crossing', 
+                        'short_pass', 'long_pass', 'penalties', 'gk_reflexes', 'gk_positioning', 'gk_kicking',
+                        'acceleration', 'stamina', 'strength', 'balance', 'sprint_speed', 'heading', 'finishing')]
+
+# Biplot PC1 and PC2 - colour by country
+biplot_x_pais = autoplot(pca, 
+         data = fifa_subset_y_paises , 
+         colour='country',
+         loadings = TRUE, 
+         loadings.colour = 'black',
+         loadings.label = TRUE, 
+         loadings.label.size = 5) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "orange", size=2, alpha=0.75) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "orange", size=2, alpha=0.75)+
+  ggtitle("Biplot - grouping per country")+
+  theme_bw()  +   theme(legend.position = "none")
+  
+# Biplot PC1 and PC2 - colour by player's price
+
+fifa_subset_y_valor = fifa[, c('value', 'age', 'height', 'weight',
+                        'ball_control', 'dribbling', 'aggression', 'reactions', 'crossing', 
+                        'short_pass', 'long_pass', 'penalties', 'gk_reflexes', 'gk_positioning', 'gk_kicking',
+                        'acceleration', 'stamina', 'strength', 'balance', 'sprint_speed', 'heading', 'finishing')]
+
+
+fifa_subset_y_valor$value =  as.numeric(gsub("\\.", "", gsub("\\$", "", fifa_subset_y_valor$value )))
+
+fifa_subset_y_valor$value <- cut(fifa_subset_y_valor$value, 
+                            breaks = quantile(fifa_subset_y_valor$value, probs = 0:3 / 3), 
+                            labels = c("Low market value", "Medium market value", "High market value"), 
+                            include.lowest = TRUE, right = FALSE)
+
+
+biplot_x_valor = autoplot(pca, 
+         data = fifa_subset_y_valor , 
+         colour='value',
+         loadings = TRUE, 
+         loadings.colour = 'black',
+         loadings.label = TRUE, 
+         loadings.label.size = 5) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "orange", size=2, alpha=0.75) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "orange", size=2, alpha=0.75)+
+  ggtitle("Biplot - grouping per market value") + 
+   scale_colour_manual(values = c("Barato" = "gold", "Medio" = "brown", "Caro" = "steelblue")) +
+  theme_bw()  
+
+ggarrange(biplot_x_pais, biplot_x_valor, nrow = 1, ncol = 2)
+```
+
+
+Analysis:
+
++ The categorical variable present in the original dataset is the birth country of each player; given the large number, there is no differentiation of the data into natural groupings by country. This is also not surprising, as it is not expected that a country produces more goalkeepers than defenders, for example.
++ Additional categorical partitions were added to broaden the interpretation of the results by generating categories in the data: market value. For the group of goalkeepers, the market value seems quite spread out with respect to PC1, while regarding PC2 there appears to be a slight differentiation of groups (expensive players correlating negatively with PC2, cheaper players correlating positively with PC2). As for field players, in relation to PC1, there seems to be a marked clustering: more expensive players have attributes that correlate more with this component and are more separated from the rest, then the mid-priced, and finally the cheaper ones.
+
+## 8- Choose a robust PCA technique and apply it to the database. Compare the results with those obtained previously. Conclude.
+
+In item 3b, the presence of outliers was mentioned, and that could affect the PCA results and the conclusions drawn. Therefore, a robust PCA method, which is resilient to outliers, is also applied.
+
+### Chosen method: MCD (Minimum Covariance Determinant)
+
+
+
+```{r}
+pca_mcd <-princomp(fifa_subset, cor=TRUE, scores=TRUE, covmat=MASS::cov.mcd(fifa_subset))# 
+summary(pca_mcd)
+```
+
+
+```{r, fig.align='center', fig.width= 10, fig.height=10}
+
+# Grafico loadings de cada variable sobre cada PC segun metodo PCA - MCD
+
+cargas_mcd = data.frame(cbind(X=1:length(fifa_subset), primeracarga=data.frame(pca_mcd$loadings)[,1]))
+
+barplot_1_mcd = ggplot(cargas_mcd, aes(colnames(fifa_subset), Comp.1)) + 
+       geom_bar (stat="identity" , position="dodge" , fill ="pink" , width =0.5) + 
+        xlab( '') + ylab('Loading') + ggtitle("a) Loading PC 1 [MCD]") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 25, hjust = 1)) 
+
+barplot_2_mcd = ggplot(cargas_mcd, aes(colnames(fifa_subset), Comp.2)) +
+       geom_bar (stat="identity" , position="dodge" , fill ="pink" , width =0.5) + 
+        xlab( '') + ylab('Loading') + ggtitle("b) Loading PC 2 [MCD]") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 25, hjust = 1)) 
+
+barplot_3_mcd = ggplot(cargas_mcd, aes(colnames(fifa_subset), Comp.3)) +
+       geom_bar (stat="identity" , position="dodge" , fill ="pink" , width =0.5) + 
+        xlab( 'Variable') + ylab('Loading') + ggtitle("c) Loading PC 3 [MCD]") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 25, hjust = 1)) 
+
+ggarrange(barplot_1_mcd, barplot_2_mcd, barplot_3_mcd, ncol = 1, nrow=3)
+
+```
+
+
+Analysis: when applying a robust method to outliers, the analysis changes significantly; for example, for PC1, the variables that correlate most with it are not the goalkeeper attributes but a large number of other physical and technical variables of the players. There is no single variable that correlates extremely more than the others with PC1, so I do not expect players to be separated based on one variable but rather on a combination of them.
+
+
+```{r}
+pca_mcd$sdev^2 
+
+prop_varianza_mcd <- pca_mcd$sdev^2 / sum(pca_mcd$sdev^2)
+prop_varianza_mcd
+p_var_mcd = data.frame(prop_varianza = prop_varianza_mcd,
+                   PC = 1:length(prop_varianza_mcd))
+
+porc_var_mcd = ggplot(data = p_var_mcd, aes(x = PC, y = prop_varianza_mcd)) +
+  geom_col(width = 0.8, fill='gold') +
+  theme_bw() +
+  labs(x = "PC", y = "Variance explained proportion") 
+
+
+prop_varianza_mcd <- pca_mcd$sdev^2 / sum(pca_mcd$sdev^2)
+prop_varianza_acum_mcd <- cumsum(prop_varianza_mcd)
+
+porc_var_acum_mcd = ggplot(data = p_var_mcd, 
+       aes(x = PC, y = prop_varianza_acum_mcd, group = 1)) +
+  geom_point( color='gold', size=2, alpha=0.8) +
+  geom_line(color='black', size=0.5) +
+  theme_bw() +
+  labs(x = "PC", y = "Cummulative variance explained proportion [MCD]")+
+  ggtitle("a) Cumulative explained variance proportion by PC [MCD]\nInset: Explained variance proportion")
+
+inset_grob_mcd <- ggplotGrob(porc_var_mcd)
+prop_var_c_inset_mcd = porc_var_acum_mcd + annotation_custom(grob = inset_grob_mcd, xmin = 7, xmax = 20, ymin = 0.25, ymax = 0.55)
+
+AV_mcd = data.frame(autoval = pca_mcd$sdev^2, PC = 1:length(pca_mcd$sdev^2))
+
+kaiser_mcd = ggplot(data = AV_mcd , aes(x = PC, y = autoval)) +
+  geom_col(width = 0.8, fill='orange') +
+  theme_bw() +
+  labs(x = "PC", y = "Autovalue")+
+  ggtitle("b) Kaiser's criterion [MCD]") +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "black", size = 1) 
+
+
+baston_mcd = fviz_eig(pca_mcd, ncp = traza, addlabels = TRUE, main="c) Broken stick criterion [MCD]", barfill = "red") +
+  xlab("PC") + 
+  ylab("Variance explained percentage (%)")  +
+  ylim(0,35)
+```
+
+
+
+```{r, fig.align='center', fig.width= 8, fig.height=10}
+ggarrange(prop_var_c_inset_mcd, kaiser_mcd, baston_mcd, ncol=1, nrow=3)
+```
+
+PC Selection:
+
+ + Comparing the methods for selecting the number of PCs, clear differences can be seen when applying robust PCA, as for example the % of explained variance per PC decreases significantly.
+ + According to these criteria, 4 PCs should be chosen, which moderately complicates the interpretation and analysis compared to the previously applied PCA; however, this method is definitely more appropriate than the previous one because it recognizes the presence of outliers and acts accordingly.
+
+
+```{r, fig.align='center', fig.width= 5, fig.height=5}
+txt_x = paste0("PC 1 (", 100*round(prop_varianza_mcd[1],3), "%)")
+txt_y = paste0("PC 2 (", 100*round(prop_varianza_mcd[2],3), "%)")
+
+autoplot(pca_mcd, 
+         data = fifa_subset, 
+         loadings = TRUE, 
+         loadings.colour = 'black',
+         loadings.label = TRUE, 
+         loadings.label.size = 5) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "orange", size=2, alpha=0.75) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "orange", size=2, alpha=0.75)+
+  theme_bw()  + xlab(txt_x) + ylab(txt_y)
+
+  
+```
+
+Analysis of the Biplot - Robust PCA:
+
++ Just like observing the influence of each variable on each PC, in this plot I see which ones tend to separate the groups, although no very marked separations are observed.
++ In fact, this is expected since together, PC1 and PC2 explain 28.55 + 20.48 = 49.03% of the data variability, so I do not expect them to be able to sharply separate groups.
+

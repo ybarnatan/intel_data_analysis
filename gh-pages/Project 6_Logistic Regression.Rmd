@@ -1,0 +1,120 @@
+---
+title: "AID 2025 - Project 6 - Logistic Regression"
+subtitle: ""
+author: "Yair B. Barnatan"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: cerulean
+    toc: true
+    toc_float:
+      collapsed: true
+    highlight: tango       
+    code_folding: hide     
+---
+
+
+# *Problem to solve*
+
+
+
+A health center wants to evaluate the effectiveness of a new flu vaccine during the winter season. To do this, they followed 200 people for 3 months: some vaccinated and others not. At the end of the period, they recorded who got sick with the flu. The researchers suspect that the area of residence (urban vs rural) may influence both the probability of getting vaccinated and the risk of getting sick, so they decide to include this variable in their analysis.
+
+They must run the code to obtain the study results, as well as the analyses performed by the researchers (alternative analyses can be proposed to strengthen the answers to the questions presented at the end).
+
+Study variables:
+
+* Vaccinated: 1 = received the vaccine, 0 = not vaccinated  
+* Urban: 1 = lives in an urban area, 0 = lives in a rural area  
+* Sick: 1 = got the flu, 0 = remained healthy  
+
+
+
+# *1.- Data simulation*
+
+```{r}
+set.seed (123)
+n <- 200
+urbano <- rbinom (n , 1, 0.6) 
+vacunado <- rbinom (n , 1, ifelse (urbano == 1, 0.7 , 0.4) )
+logit_p <- -2 - 1.5 * vacunado + 0.5 * urbano
+prob <- 1/ (1 + exp (- logit_p))
+enfermo <- rbinom (n , 1, prob )
+datos <- data.frame (vacunado, urbano, enfermo )
+```
+
+# *2.- EDA*
+
+### 2.A) Explore the data obtained
+
+```{r}
+table(datos$vacunado, datos$enfermo)
+prop.table(table ( datos $ vacunado , datos $ enfermo ) , 1)
+```
+
+
+
+**Analysis**
+
+* The contingency table shows the observed values for the sample of n=200 regarding how many individuals got sick or not:
+  + Among the unvaccinated, 9 got sick and 82 remained healthy.
+  + Among the vaccinated, 5 got sick and 104 remained healthy.
+  + From the frequency table, we can calculate the illness rate for the unvaccinated ≈ 9.9% and for the vaccinated ≈ 4.6%, suggesting that vaccination reduces the probability of getting sick.
+
+### 2.B) Logistic model with a single independent variable: vaccination
+
+
+
+```{r}
+modelo1 <- glm ( enfermo ~ vacunado , data = datos , family = binomial )
+summary ( modelo1 )
+OR1 <- exp ( coef ( modelo1 ) [2])
+efectividad1 <- (1 - OR1 ) * 100
+cat (" OR ␣ vaccine :" , round ( OR1 , 3) , "\n")
+cat (" Efectiveness ␣ without ␣ adjusting :" , round ( efectividad1 , 1) , " %\n")
+```
+
+
+### 2.C) Logistic model with two independent variables: vaccination and urban region (no interaction, only additive effects)
+
+```{r}
+modelo2 <- glm ( enfermo ~ vacunado + urbano , data = datos , family =binomial )
+summary ( modelo2 )
+
+OR_vacuna <- exp ( coef ( modelo2 ) [2])
+OR_urbano <- exp ( coef ( modelo2 ) [3])
+efectividad2 <- (1 - OR_vacuna ) * 100
+cat (" OR ␣ vaccine ␣( adjusted ):" , round ( OR_vacuna , 3) , "\n")
+cat (" OR ␣ urban ␣ region :" , round ( OR_urbano , 3) , "\n")
+cat (" Efectiveness ␣ adjusted :" , round ( efectividad2 , 1) , " %\n")
+```
+
+
+
+# *3.- Going further*
+
+A. Interpretation of results:
+
++ For both model1 and model2, the summaries show that the hypothesis tests for the variables are not statistically significant, so there is no evidence of an effect of either variable on protection against the illness. A valid interpretation is provided here in case they had been significant.
+
++ If the OR for the vaccine is 0.38, what does this mean in terms of risk? ----> The OR is a ratio of odds (in this case, odds of illness when vaccinated / odds when not vaccinated), so a value of 0.38 indicates that the odds of getting sick when vaccinated are 0.38 times the odds of getting sick without vaccination.
+
++ How do you interpret an effectiveness of 62%? ----> This focuses on the effect of the vaccine on the vaccinated group: if effectiveness is 62%, it means that the vaccine reduces the risk of getting the flu by 62% compared to the unvaccinated group.
+
++ If the OR for urban area is 1.58, do urban residents have a higher or lower risk than rural residents? ----> An OR_urban = 1.58 indicates that people living in urban areas have 1.58 times the odds of getting the flu compared to those living in rural areas.
+
++ Why might effectiveness change between the simple and adjusted model? ----> Adding additional variables—in general—and the "urban" variable in this case, allows isolating the effect of the vaccine by removing the influence of other factors like place of residence, age, healthcare access, etc., which are represented (at least partially) by the “urban” variable. By adding another variable, explanatory power increases and the model's random error term (epsilon) is reduced.
+
+B. Limitations of the observational study:
+
++ What other uncontrolled confounding variables could affect the results? ----> Since this is an observational study, many variables that could influence the results are not controlled for (unlike in an experimental design where treatments are randomly assigned). These confounding variables could include: age, pre-existing conditions, socioeconomic status / healthcare access, prior vaccination history, and dose-response patterns.
+
++ People who choose to get vaccinated may differ in characteristics (age, health, personal care, etc.), even behavior, which is complex to measure. How might you try to control for or at least account for these potential effects of unmeasured variables? ----> Besides controlling for measurable variables like age and socioeconomic status, for those harder-to-measure variables (such as behavior), one approach could be to conduct a longitudinal study that follows the same individuals over time in order to better capture attributes that may introduce unobserved differences. Additionally, a dose-response analysis could help understand how the effect of vaccination exposure varies with respect to illness outcomes.
+
+C. Causality vs. association:
+
++ Does this study prove that the vaccine is the cause of protection against the illness? ----> No, not at all. It’s essential to be explicit about the scope of each study or experiment. Since this is an observational study—not an experiment—we can only conclude that there is a positive association between vaccination and lower risk of illness, but we cannot definitively say that the vaccine caused the protection.
+
++ How would you communicate these results without overstating the evidence? ----> Since longitudinal and experimental studies can be more costly than the observational study presented, it is crucial to clearly state which variables have been measured or controlled, and which have not, acknowledging that the observed results may be influenced by both the studied variables and (to an unknown extent) systematic differences among individuals included in this vaccination study.
+
+

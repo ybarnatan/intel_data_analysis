@@ -1,0 +1,364 @@
+---
+title: "AID 2025 - Project 5 - ANOVA and Data Visualization"
+subtitle: ""
+author: "Yair B. Barnatan"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: cerulean
+    toc: true
+    toc_float:
+      collapsed: true
+    highlight: tango       
+    code_folding: hide     
+---
+
+
+# *Problem to solve*
+
+An educational researcher wishes to evaluate the effectiveness of three different methods for teaching mathematical problem-solving. A total of 18 students with similar characteristics were randomly selected and randomly assigned to one of the three methods (6 students per group). After 4 weeks of instruction, a standardized test was administered. The scores obtained were as follows.
+
+
+# *Import libraries*
+```{r , warning=FALSE, error=FALSE, message=FALSE}
+library(ggplot2)
+library(dplyr)
+library(knitr) 
+library(kableExtra)
+library(car)
+```
+
+
+```{r}
+# Data:
+metodo_tradicional <- c(74, 71, 76, 73, 72, 75)
+metodo_colaborativo <- c(82, 85, 83, 87, 84, 86)
+metodo_tecnologico <- c(78, 81, 79, 82, 80, 83)
+
+metodos <- data.frame(
+  Metodo_Tradicional = metodo_tradicional,
+  Metodo_Colaborativo = metodo_colaborativo,
+  Metodo_Tecnologico = metodo_tecnologico)
+```
+
+
+# *1.- Exploratory Analysis*
+
+A. Calculate for each method:
+
++ Mean and median  
++ Standard deviation
+
+B. Create a comparative boxplot for the three methods.
+
+C. Based on the descriptive statistics and the boxplot, formulate a preliminary hypothesis about which method might be more effective.  
+**Important:** Justify your answer using specific numerical evidence from the calculations performed.
+
+
+```{r}
+resumen <- data.frame(
+  Metodo = c("Traditional", "Colaborative", "Technological"),
+  Media = c(mean(metodo_tradicional),
+            mean(metodo_colaborativo),
+            mean(metodo_tecnologico)),
+  Mediana = c(median(metodo_tradicional),
+              median(metodo_colaborativo),
+              median(metodo_tecnologico)),
+  Desviacion_Estandar = c(sd(metodo_tradicional),
+                          sd(metodo_colaborativo),
+                          sd(metodo_tecnologico)),
+  N = c(length(metodo_tradicional),
+        length(metodo_colaborativo),
+        length(metodo_tecnologico))
+)
+
+metodos_long <- data.frame(Metodo = rep(c("Traditional", "Colaborative", "Technological"), each = 6),
+                            Puntaje = c(metodo_tradicional, metodo_colaborativo, metodo_tecnologico))
+
+metodos_long$Metodo <- factor(metodos_long$Metodo,levels = c("Traditional", "Colaborative", "Technological"))
+```
+
+
+```{r}
+resumen %>%
+  kable(format = "html", digits = 2, align = "c", caption = "Resumen por metodo") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                full_width = F, position = "center")
+
+
+# Seteo mi paleta de colores
+colores <- c("Traditional" = "#00AFBB",      
+             "Colaborative" = "#E7B800",
+             "Technological" = "#FC4E07")     
+
+# Boxplot
+ggplot(metodos_long, aes(x = Metodo, y = Puntaje, fill = Metodo)) +
+  geom_boxplot(alpha = 0.6) +   
+  geom_jitter(width = 0.15, size = 2, alpha = 0.8, aes(color = Metodo)) +  
+  scale_fill_manual(values = colores) +
+  scale_color_manual(values = colores) +
+  labs(title = "Scores per method",
+       y = "Score",
+       x = "Teaching method") +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "none")
+```
+
+
+**Analysis**
+
++ From the summary statistics table, we can see that for all three methods, the median and mean are the same. This suggests that the data has a symmetric distribution, with no significant skewness (neither to the right nor to the left).
++ Continuing the analysis, the standard deviation is equal across all three groups. This indicates that the variability (= spread of scores) is the same for the three methods. All students within each group performed consistently.
++ *NOTE:* This is not common in real/natural data, but in this case, it happens because all values are within a 5-point range and have perfectly symmetric distributions. Evidently, the teaching method is affecting student performance (scores) but not the variability.
++ Analyzing the mean values and the boxplot, we can expect a priori that the traditional method has the lowest average score (73.5), followed by the technological method (80.5), and finally, the collaborative method shows the highest score (84.5).
+
+# *2.- Verification of Assumptions*
+
+
+```{r}
+metodos_long$Metodo = as.factor(metodos_long$Metodo) 
+modelo_anova <- aov(Puntaje ~ Metodo, data = metodos_long) 
+res = residuals(modelo_anova) 
+
+```
+
+
+ANOVA requires that three fundamental assumptions be met. For each one, answer the following:
+
+A. Independence:
+
++ Explain why the experimental design ensures (or does not ensure) the independence of observations. Specifically mention which aspects of the experimental protocol support this assumption.
+
+B. Normality:
+
++ Check the normality of each distribution using the Shapiro-Wilk test.  
++ Fit the ANOVA model and extract the residuals. Construct a Q-Q plot of the residuals and also test normality using Shapiro-Wilk.  
++ Interpret the results of the tests using α = 0.05.
+
+C. Homoscedasticity:
+
++ Apply Levene’s test.  
++ Interpret the result using α = 0.05.
+
+### 2.a) Assumption of independence of the data
+
+This assumption is determined by the study design—whether it is experimental or observational—and how the data were collected. In this case, the study is experimental since the type of treatment (study method) was randomly assigned to the experimental units (students). Given that:
+
++ Students were randomly assigned to each treatment with equal probability
++ Each student participated in only one treatment (i.e., no repeated measures)
+
+we can say that the data are independent.
+
+### 2.b) Assumption of normality
+
+#### 2.b.1.- Normality of the original data
+
+
+```{r}
+shapiro_results <- unique(metodos_long$Metodo) %>%
+  lapply(function(i) {
+    test <- shapiro.test(metodos_long$Puntaje[metodos_long$Metodo == i])
+    data.frame(
+      Metodo = i,
+      W = round(test$statistic, 4),
+      `p-value` = round(test$p.value, 4)
+    )
+  }) %>%
+  bind_rows()
+
+# Mostrar como tabla elegante en RMarkdown
+kable(shapiro_results, row.names = FALSE, caption = "Normality test per method - Shapiro-Wilk")
+
+```
+
+**Analysis**
+
++ The Shapiro-Wilk test on the original variable (for each group level) shows that the p-value > α, so we fail to reject Ho = the distribution is normal.
+
+*Note:* On June 1st, 2025, I left this question on the course platform but it was not answered. At the time of submitting the assignment, there was no response, so I verified the normality assumptions for both the original variable and the residuals. I would appreciate clarification regarding the ANOVA assumptions. According to the theoretical explanation provided in class, there is a normality assumption for both the original variable and the residuals. According to other sources (Biometrics lecture notes, ChatGPT), the assumption is that the residuals are normally distributed, but nothing is said about the distribution of the original variable.
+
+#### 2.b.2.- Normality of the ANOVA residuals
+
+
+```{r}
+test_residuos <- shapiro.test(res)
+cat("\nShapiro-Wilk test for residues:\n W =", round(test_residuos$statistic, 4), ", p-v =", round(test_residuos$p.value, 4), "\n")
+
+
+# -> QQplot para los residuos
+qqnorm(res, main = "QQ plot for residues",col = "blue")
+qqline(res, col = "red", lwd = 3)
+
+```
+
+**Analysis**
+
++ Shapiro-Wilk (analytical method): The null hypothesis (Ho) of this test is that the distribution is normal. Since the p-value > α = 0.05, we fail to reject Ho -> the residuals are normally distributed.
++ QQ plot (graphical method): The result from the Shapiro-Wilk test is consistent with what is observed in the QQ plot — there are no major deviations from the 45-degree reference line, which indicates that the observed values are similar to the expected values under a normal distribution.
+
+### 2.c) Assumption of Homoscedasticity
+
+
+```{r}
+test_levene <- leveneTest(Puntaje ~ Metodo, data = metodos_long)
+print(test_levene)
+```
+
+**Analysis**
+
++ Levene (analytical method): The null hypothesis (Ho) of this test is that the population variances are equal. Since the p-value = 1 > 0.05, we fail to reject Ho -> the assumption of homoscedasticity holds (which makes sense, because we already saw that the standard deviation is the same for all groups).
+
+
+# *3.- Analysis of Variance*
+
+A. Formally state the null and alternative hypotheses for this problem.
+
+B. Conceptual question: Explain in your own words why it is not appropriate to perform three independent t-tests (Traditional vs Collaborative, Traditional vs Technological, Collaborative vs Technological) instead of an ANOVA. Specifically mention the concept of Type I error inflation.
+
+C. Interpretation of the F statistic: The F statistic is calculated as MCbetween / MCwithin. Explain what each component of this ratio represents and why large F values suggest differences between groups.
+
+D. With α = 0.05, determine the critical F value and make a decision regarding the hypotheses stated.
+
+
+### 3.a) Hypothesis Statement
+
+The hypotheses in terms of the problem are:
+
+* Ho: There are no differences in the average test scores of students across the three pedagogical methods for teaching mathematical problem-solving.
+* Ha: At least one average test score differs among the three pedagogical methods.
+
+
+### 3.b) Lack of Control over Global Type I Error
+
+A Type I error occurs when a true null hypothesis is incorrectly rejected (i.e., a false positive). If we perform a t-test comparing any two teaching methods, the Type I error rate is α = 0.05. However, if we perform multiple tests, this rate increases, since α = 0.05 applies to each individual test, but not to the overall set of tests.
+
+When performing multiple pairwise comparisons, the question becomes: what is the probability of committing at least one Type I error across all tests? This can be calculated using the basic probability definition for *k* independent events:
+
+P(at least one Type I error) = 1 − P(no Type I errors) = 1 − (1−α)^k
+
+In this case: P(at least one Type I error) = 1 − (1−0.05)^3 = 0.143
+
+This means there is approximately a 14% chance of obtaining at least one false positive — nearly three times the desired significance level (5%).
+
+
+### 3.c) Interpretation of Fisher’s F Statistic
+
+```{r}
+summary(modelo_anova)
+```
+
+
+The F statistic consists of a ratio of mean squares (MS between / MS within):
+
+* MS between = mean square between groups = measures how much the group means differ from each other
+* MS within = mean square within groups = measures how much the data varies within each group
+
+The idea behind ANOVA is that variability within groups should be smaller than variability between groups in order to detect differences (thus, the ratio MS between / MS within should be large).
+
+* If F is close to 1 -> variation between groups is similar to the variation within groups -> no clear evidence of real differences between groups
+* If F is greater than 1 -> variation between groups is significantly larger than the variation within groups -> there is clear evidence of real differences between groups
+
+
+### 3.d) ANOVA Decision
+
+Since ANOVA is a valid method (based on the verification of assumptions) and produces an F value = 53.14 (which is large) with an associated p-value less than α (1.56 * 10^-7 <<< 0.05) -> I reject Ho -> At least one group mean differs from the others regarding the three pedagogical methods used for teaching mathematical problem-solving.
+
+
+
+# *4.- Post-hoc Comparisons*
+
+
+A. If the ANOVA result is significant, apply the Tukey HSD test to determine which pairs of methods differ significantly.
+
+B. Application question: Suppose you find that the Collaborative Method is significantly better than the other two, but the average difference is only 2 points. Discuss whether this difference is statistically significant vs practically important in the educational context.
+
+### 4.a) Tukey
+
+ANOVA allows us to detect whether there is a difference in at least one mean compared to the others, but it does not indicate which means differ. For this, post-hoc comparisons are performed. In this case, the Tukey HSD test was used to evaluate which means differ.
+
+
+```{r}
+tukey_resultado <- TukeyHSD(modelo_anova)
+
+tukey_df <- as.data.frame(tukey_resultado$Metodo)
+tukey_df$Comparison <- rownames(tukey_df)
+tukey_df <- tukey_df[, c("Comparison", "diff", "lwr", "upr", "p adj")]
+colnames(tukey_df) <- c("Comparison", "Mean difference", 
+                        "Upper_limit", "Lower_limit", 
+                        "Adjusted p-v")
+
+kable(tukey_df, format = "html", digits = 9, align = "c", 
+      caption = "Tukey multiple comparison test results") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                full_width = F, position = "center")
+
+tukey_df <- tukey_df[order(tukey_df$Comparison), ]
+
+ggplot(tukey_df, aes(x = Comparison, y = `Mean difference`)) +
+  geom_point(size = 3, color = "violet") +
+  geom_errorbar(aes(ymin = `Upper_limit`, ymax = `Lower_limit`),
+                width = 0.2, color = "violet", linewidth = 1.2) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Difference between teaching methods (Tukey)",
+       x = "Comparison", y = "Score difference (mean)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+
+**Analysis**
+
++ Tukey’s comparisons allow evaluating pairwise differences. For each comparison, a p-value < α is obtained, so all differences are significant.
++ Ordering the methods according to the ANOVA and comparison results, the findings agree with the initial hypothesis: the traditional method has the lowest average score, the technological method has an intermediate score, and the collaborative method has the highest score.
+
+
+
+### 4.b) Statistical significance vs. practical relevance
+
+In the hypothetical case where the collaborative method was found to be significantly superior to the other two methods, with an average positive impact of two points, it is worth asking whether this statistical difference also implies a real difference in the educational context. Questions to consider to determine practical significance include:
+
+* What is the standard method? If it is the collaborative one, continue using it.
+* If not,
+
+  - What is the cost in terms of resources (time, money, staff training, facility and material modifications) to change the methodology?
+  - Is there an improvement in the students’ actual understanding with the new method?
+  - Is there an effect on course passing rates (i.e., do more students pass because of the change in method)?
+
+Based on these questions, one could assess if there is a practical effect beyond the statistical one, and whether it is worthwhile to change methodology if the collaborative method is not the standard.
+
+
+
+# *5.- Critical Analysis*
+
+A. Study limitations: Identify at least three limitations of this experimental design that could affect the external validity of the results.
+
+B. Methodological question: If one of the groups had shown an extreme outlier (e.g., a score of 45), describe two different strategies to address this situation and the implications of each.
+
+C. Personal question: Is there anything in the data or results that caught your attention? That is, something you find unusual or that raises suspicion about the data’s validity?
+
+
+
+### 5.a) Limitations of the experimental design
+
+Possible limitations of the design and provided data:
+
++ The participants have very similar characteristics: they are probably students of the same age, school, and academic level (grade/year), which might limit the generalizability of the findings to other groups (other schools, other ages, etc.).
++ Small sample size: a larger number of students could have been sampled; results obtained with n=6 per group might not replicate with a larger sample.
++ The study aims to evaluate each student’s performance only by the pedagogical method, but the statement does not mention other factors that could also affect scores, such as the teachers who conducted the instruction (was it always the same teacher or different ones?) and the conditions (virtual/in-person/hybrid). Including these factors in the analysis might explain or mitigate differences between groups (they could be included as additional factors in the ANOVA).
+
+
+
+### 5.b) Extreme outlier
+
+If an extreme outlier was found, one should verify:
+
++ Was there any error in data entry?
++ Is this data point representative of the sampled population?
++ If it is a real and relevant data point that belongs to the population under study, perform a sensitivity analysis by running ANOVA with and without this data point to see how much it influences the results. In such a case, robust analysis methods could be considered (e.g., non-parametric tests like Kruskal-Wallis).
+
+
+
+### 5.c) Remarkable data or results
+
+It was mentioned above about the symmetry of the data and the equality of variability in each group. It is important to check that the data were entered correctly and not manipulated, either deliberately or accidentally.
+

@@ -20,7 +20,7 @@ This repository contains six independent data analysis projects. Each project is
 
 
 
-| Project Name                         | Badge Link                                  |
+| Project Name                         | Link to project                                  |
 |-------------------------------------|---------------------------------------------|
 | Exploratory Data Analysis                 | [![Project 1](https://img.shields.io/badge/Project_1-Exploratory_Data_Analysis-blue)](https://ybarnatan.github.io/intel_data_analysis/Project_1_Exploratory_Data_Analysis/Project-1_EDA_Cafe-Dataset.html)|
 | Statistical Tests                        | [![Project 2](https://img.shields.io/badge/Project_2-Statistical_Tests-green)](https://ybarnatan.github.io/intel_data_analysis/Project_2_Statistical_Tests/Project-2_Mobiles-Dataset.html) |

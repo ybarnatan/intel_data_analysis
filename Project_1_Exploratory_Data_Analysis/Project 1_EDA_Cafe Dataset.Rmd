@@ -1,0 +1,727 @@
+---
+title: "AID 2025 - Project 1 - Exploratory Data Analysis"
+subtitle: ""
+author: "Yair B. Barnatan"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: cerulean
+    toc: true
+    toc_float:
+      collapsed: true
+    highlight: tango       
+    code_folding: hide     
+---
+
+# *Topics*
+
++ Data classification and exploration
+
++ Univariate analysis techniques
+
++ Descriptive analysis of structured data (EDA)
+
++ Visualization of information and univariate data
+
++ Preliminary data analysis: detection of missing values and outliers
+
++ Sampling
+
++ Introduction to resampling techniques: permutations and bootstrapping
+
++ Train-test data splitting
+
+
+# *Import libraries*
+
+```{r , warning=FALSE, error=FALSE, message=FALSE}
+library(ggplot2)
+library(readxl)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(knitr)  
+library(ggpubr)
+library(viridis)
+```
+
+
+
+
+
+# *Data loading*
+
+##### Note: each transaction is unique per product, not per customer (e.g., if a customer buys 1 coffee and 2 croissants, this counts as 2 transactions).
+
+```{r, warning=FALSE, error=FALSE, message=FALSE}
+#   Data Source
+#   https://www.kaggle.com/datasets/ahmedmohamed2003/cafe-sales-dirty-data-for-cleaning-training/data
+
+pathBase = dirname(rstudioapi::getSourceEditorContext()$path)
+cafe <- read_csv(paste0(pathBase,"/dirty_cafe_sales.csv"))
+attach(cafe)
+sapply(cafe, class)
+cafe$Quantity = as.numeric(cafe$Quantity)
+cafe$`Price Per Unit` = as.numeric(cafe$`Price Per Unit`)
+cafe$`Total Spent` = as.numeric(cafe$`Total Spent`)
+```
+
+
+# *Part 1: Exploratory Descriptive Analysis*
+
+Analyze the columns Item, Quantity, Payment Method, and Location, considering the following:
+
+## a) Visualize the values present in each column, identifying any null values and strings that may indicate errors (e.g., "ERROR" or "UNKNOWN").
+
+
+```{r}
+prep_p_vis_categoricas = function(DF){ 
+DF = DF[!(DF$Var1 %in% c("ERROR", "UNKNOWN")), ] #Saco "ERROR" y "UNKNOWN"
+colnames(DF) = c('categoria', 'nro')
+
+#Para graficar:
+DF$fraction = DF$nro / sum(DF$nro)# Computo %
+DF$ymax = cumsum(DF$fraction)# Computo el % acumulado (top of each rectangle)
+DF$ymin = c(0, head(DF$ymax, n=-1))# Sera el bottom of each rectangle
+DF$label <- paste0(DF$categoria, "\n value: ",  DF$nro) #Para los numeros y el texto
+DF$labelPosition <- (DF$ymax + DF$ymin) / 2 #posicion de la label
+
+return(DF)
+}
+
+```
+
+
+```{r,fig.width=8, fig.height=8, warning=FALSE, error=FALSE, message=FALSE}
+cafe_filtrado = subset(cafe , select=c(Item, Quantity, `Payment Method`, Location))
+
+items = as.data.frame(table(cafe_filtrado$Item))
+itemz = prep_p_vis_categoricas(items)
+
+q1 = ggplot(itemz, aes(ymax=ymax, ymin=ymin, xmax=4, xmin=3, fill=categoria)) +
+     geom_rect() +
+     coord_polar(theta="y") +
+     xlim(c(2, 4))+ 
+     theme_void()+
+     ggtitle("Items") +
+     geom_rect() +
+     geom_label( x=3.5, aes(y=labelPosition, label=label), size=3) +
+     theme(legend.position = "none") +
+     scale_fill_brewer(palette='Set3') +
+     scale_color_brewer(palette='Set3') 
+
+Loc = as.data.frame(table(cafe_filtrado$Location))
+Loc = prep_p_vis_categoricas(Loc)
+
+q4 = ggplot(Loc, aes(ymax=ymax, ymin=ymin, xmax=4, xmin=3, fill=categoria)) +
+     geom_rect() +
+     coord_polar(theta="y") + 
+     xlim(c(2, 4))+ 
+     theme_void()+
+     ggtitle("Location") +
+     geom_rect() +
+     geom_label( x=3.5, aes(y=labelPosition, label=label), size=3) +
+     theme(legend.position = "none")
+
+
+Payment = as.data.frame(table(cafe_filtrado$`Payment Method`))
+Payment = prep_p_vis_categoricas(Payment)
+
+
+q3 = ggplot(Payment, aes(ymax=ymax, ymin=ymin, xmax=4, xmin=3, fill=categoria)) +
+     geom_rect() +
+     coord_polar(theta="y") + 
+     xlim(c(2, 4))+ 
+     theme_void()+
+     ggtitle("Payment Method") +
+     geom_rect() +
+     geom_label( x=3.5, aes(y=labelPosition, label=label), size=3) +
+     theme(legend.position = "none")+
+     scale_fill_brewer(palette='Set2') +
+     scale_color_brewer(palette='Set2') 
+
+Qty = as.data.frame(table(cafe_filtrado$Quantity))
+Qty = prep_p_vis_categoricas(Qty)
+
+q2 = ggplot(Qty, aes(ymax=ymax, ymin=ymin, xmax=4, xmin=3, fill=categoria)) +
+     geom_rect() +
+     coord_polar(theta="y") + 
+     xlim(c(2, 4))+ 
+     theme_void()+
+     ggtitle("Quantity") +
+     geom_rect() +
+     geom_label( x=3.5, aes(y=labelPosition, label=label), size=3) +
+     theme(legend.position = "none")+
+     scale_fill_brewer(palette='Set1') +
+     scale_color_brewer(palette='Set1') 
+
+
+ggarrange(q1,q2,q3,q4, ncol = 2, nrow = 2)
+```
+
+
+
+
+```{r}
+df_cafe =  subset( cafe , select=c(Item, Quantity, `Payment Method`, Location))
+
+df_cafe$Item = as.factor(df_cafe$Item )
+df_cafe$`Payment Method`= as.factor(df_cafe$`Payment Method`)
+df_cafe$Location= as.factor(df_cafe$Location )
+df_cafe$Quantity = as.numeric(df_cafe$Quantity)
+
+summary(df_cafe, maxsum = length(Reduce(union, df_cafe)))
+```
+
+Using the summary, I observed the presence of null values as well as error strings such as "ERROR" and "UNKNOWN".
+
+* This can also be visualized using bar plots, which show the frequency of each value in the columns.
+
+```{r,fig.width=8, fig.height=8, warning=FALSE, error=FALSE, message=FALSE}
+df_item_filtered <- df_cafe[is.na(df_cafe$Item) | df_cafe$Item %in% c("ERROR", "UNKNOWN"), ] 
+df_item_filtered$Item <- replace(as.character(df_item_filtered$Item), is.na(df_item_filtered$Item), "NA") 
+
+y1 = ggplot(df_item_filtered, aes(x = Item, fill = Item)) +
+  geom_bar( color = "black") +
+  labs(title = " 'NA', 'ERROR' o 'UNKNOWN' \nin Item", x = "Item", y = "Frequency") +
+  theme_minimal()+
+  scale_fill_manual(values = c("#00AFBB", "#E7B800", "#FC4E07"))
+
+
+df_qty_filtered <- df_cafe[is.na(df_cafe$Quantity) | df_cafe$Quantity %in% c("ERROR", "UNKNOWN"), ]
+df_qty_filtered$Quantity<- replace(as.character(df_qty_filtered$Quantity), is.na(df_qty_filtered$Quantity), "NA") 
+
+y2 =  ggplot(df_qty_filtered, aes(x = Quantity, fill = Quantity)) +
+  geom_bar( color = "black") +
+  labs(title = " 'NA', 'ERROR' o 'UNKNOWN' \nin Quantity", x = "Quantity", y = "Frequency") +
+  theme_minimal()+
+  scale_fill_manual(values = c("#00AFBB", "#E7B800", "#FC4E07"))
+   
+
+
+
+
+df_payment_filtered <- df_cafe[is.na(df_cafe$`Payment Method`) | df_cafe$`Payment Method` %in% c("ERROR", "UNKNOWN"), ]
+df_payment_filtered$`Payment Method` <- replace(as.character(df_payment_filtered$`Payment Method`), is.na(df_payment_filtered$`Payment Method`), "NA")
+
+y3 = ggplot(df_payment_filtered, aes(x = `Payment Method`, fill = `Payment Method`)) +
+  geom_bar(color = "black") +
+  labs(title = "'NA', 'ERROR' o 'UNKNOWN' \nin Payment Method", x = "Payment Method", y = "Frequency") +
+  theme_minimal() +
+  scale_fill_manual(values = c("#00AFBB", "#E7B800", "#FC4E07"))
+
+df_location_filtered <- df_cafe[is.na(df_cafe$Location) | df_cafe$Location %in% c("ERROR", "UNKNOWN"), ]
+df_location_filtered$Location <- replace(as.character(df_location_filtered$Location), is.na(df_location_filtered$Location), "NA") 
+
+y4 =ggplot(df_location_filtered, aes(x = Location, fill = Location)) +
+  geom_bar( color = "black") +
+  labs(title = " 'NA', 'ERROR' o 'UNKNOWN' \nin Location", x = "Location", y ="Frequency") +
+  theme_minimal()+
+  scale_fill_manual(values = c("#00AFBB", "#E7B800", "#FC4E07"))
+
+
+ggarrange(y1,y2,y3,y4, ncol = 2, nrow = 2)
+```
+
+
+
+```{r}
+# I was surprised to see that the Quantity column only contained null values, so I double-checked it:
+# It returns FALSE with length = nrow(df_cafe).
+table(df_cafe$Quantity %in% c("ERROR", "UNKNOWN"))
+```
+
+b) Identify the most frequent values using graphical representations (e.g., bar charts, pie charts, etc.)
+
+```{r, fig.width=10, fig.height=12, warning=FALSE, error=FALSE, message=FALSE}
+conteo_Item <- df_cafe %>% count(Item)
+conteo_Qty <- df_cafe %>% count(Quantity)
+conteo_Pay <- df_cafe %>% count(`Payment Method`)
+conteo_Loc <- df_cafe %>% count(Location)
+
+a1 = ggplot(conteo_Item, aes(x = Item, y = n, fill = Item)) +
+  geom_bar(stat = "identity") +
+labs(title = "Frequency and Type of Items Purchased", x = "Purchased Item", y = "Number of Occurrences") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+a2 = ggplot(conteo_Qty, aes(x = Quantity, y = n, fill = Quantity)) +
+  geom_bar(stat = "identity") +
+labs(title = "Frequency of Number of Items Purchased\nof the Same Item", x = "Quantity", y = "Number of Occurrences") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+a3 = ggplot(conteo_Pay, aes(x = `Payment Method`, y = n, fill = `Payment Method`)) +
+  geom_bar(stat = "identity") +
+labs(title = "Frequency of Payment Methods Used", x = "Payment Method", y = "Number of Occurrences") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+a4 = ggplot(conteo_Loc, aes(x = Location, y = n, fill = Location)) +
+  geom_bar(stat = "identity") +
+labs(title = "Frequency of Purchase Location", x = "Location", y = "Number of Occurrences") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggarrange(a1,a2,a3,a4, ncol=2, nrow=2)
+
+```
+
+
+This can also be visualized by plotting all variables as categorical, including NA values and error strings such as "ERROR" and "UNKNOWN".
+
+c) Count the number of entries with null values or error strings ("ERROR"/"UNKNOWN") in each column.
+
+
+
+```{r}
+miss_Item = conteo_Item %>% filter(if_any(everything(), ~ is.na(.) | . %in% c("UNKNOWN", "ERROR")))
+miss_Qty = conteo_Qty %>% filter(if_any(everything(), ~ is.na(.) | . %in% c("UNKNOWN", "ERROR")))
+miss_Pay = conteo_Pay %>% filter(if_any(everything(), ~ is.na(.) | . %in% c("UNKNOWN", "ERROR")))
+miss_Loc = conteo_Loc %>% filter(if_any(everything(), ~ is.na(.) | . %in% c("UNKNOWN", "ERROR")))
+
+colnames(miss_Item)[colnames(miss_Item) == "Item"] <- "Categoria"
+colnames(miss_Qty)[colnames(miss_Qty) == "Quantity"] <- "Categoria"
+colnames(miss_Pay)[colnames(miss_Pay) == "`Payment Method`"] <- "Categoria"
+colnames(miss_Loc)[colnames(miss_Loc) == "Location"] <- "Categoria"
+
+knitr::kable(miss_Item, format = "html", caption = "Item", align = 'r')
+knitr::kable(miss_Qty, format = "html", caption = "Quantity", align = 'r')
+knitr::kable(miss_Pay, format = "html", caption = "Payment Method", align = 'r')
+knitr::kable(miss_Loc, format = "html", caption = "Location", align = 'r')
+
+```
+
+Additionally, answer the following:
+
+## 1. What is the most frequent Item (e.g., Coffee, Salad, Cake, etc.) in the table?
+
+```{r}
+#Busco el minimo
+#Primero limpio el data frame conteo_Item de los valores nulos (NA) y de los strings de errores
+Item_limpio <- conteo_Item[!apply(conteo_Item, 1, function(x) any(is.na(x) | x %in% c("ERROR", "UNKNOWN"))), ]
+#Busco el maximo
+item_mas_frec <- Item_limpio[which.max(Item_limpio$n), ] 
+```
+
+The most frequent item is Juice, with 1,171 units sold.
+
+```{r}
+item_mas_frec
+```
+
+## 2. What is the least frequent Quantity (number of items ordered)?
+
+```{r}
+#Primero limpio el data frame conteo_Qty de los valores nulos (NA) y de los strings de errores
+Qty_limpio <- conteo_Qty[!apply(conteo_Qty, 1, function(x) any(is.na(x) | x %in% c("ERROR", "UNKNOWN"))), ]
+#Calculo el minimo
+qty_menos_frec <- Qty_limpio[which.min(Qty_limpio$n), ] 
+```
+
+It can be observed that the least frequent quantity ordered is a single product.
+
+
+```{r}
+qty_menos_frec
+```
+
+## 3. How many people paid with cash?
+
+```{r}
+conteo_Pay
+n_cash <- conteo_Pay[conteo_Pay$`Payment Method` == "Cash", "n"]
+```
+
+The number of people who chose to pay with cash is 2,258.
+
+
+```{r}
+n_cash
+```
+
+## 4. How many records contain UNKNOWN, NA, or ERROR in the Location column? Also, determine the proportion these values represent relative to the total number of rows in the dataset.
+
+```{r}
+nro_missing_loc = sum(miss_Loc$n)
+```
+
+The number of records with NA, ERROR, or UNKNOWN values is 3,961.
+
+
+```{r}
+nro_missing_loc
+```
+
+```{r}
+prop_missing_loc = nro_missing_loc / nrow(cafe)
+```
+
+The proportion of such records is:
+
+```{r}
+prop_missing_loc
+```
+
+
+## After removing all non-numeric values from the Price Per Unit column, determine the mean, median, and standard deviation.
+
+```{r}
+cafe_aux <- cafe %>% mutate(`Price Per Unit` = as.numeric(`Price Per Unit`)) 
+cafe_aux <- cafe_aux %>% filter(!is.na(as.numeric(`Price Per Unit`)))
+price_per_unit_numerica = cafe_aux$`Price Per Unit`
+
+
+promedio <- mean(price_per_unit_numerica, na.rm = TRUE)
+mediana <- median(price_per_unit_numerica, na.rm = TRUE)
+desviacion_estandar <- sd(price_per_unit_numerica, na.rm = TRUE)
+```
+
+For the Price Per Unit column, after removing all rows with non-numeric values, the following statistics were obtained:
+
+```{r}
+promedio 
+mediana
+desviacion_estandar 
+```
+
+# *Part 2: Outlier Analysis and Temporal Patterns*
+Using the original unmodified dataset, perform the following:
+
+## a) Determine if there are any outliers in any column and justify your answer.
+
+```{r, warning=FALSE, error=FALSE, message=FALSE,fig.width=4, fig.height=6, fig.align='center'}
+summary(cafe) 
+
+b1 = ggplot(cafe, aes(x = "", y = `Price Per Unit`)) +
+  geom_boxplot(fill = "skyblue", color = "black") +
+  geom_point(color = "darkred", alpha = 0.1) +
+  geom_jitter(width = 0.3, alpha = 0.1) +
+  labs(title = "Boxplot de Price Per Unit", x = "", y = "Price Per Unit") +
+  theme_minimal()
+
+b2 = ggplot(cafe, aes(x = "", y = `Total Spent`)) +
+  geom_boxplot(fill = "gold", color = "black") +
+  geom_point(alpha = 0.1) +
+  geom_jitter(width = 0.3, alpha = 0.1) +
+  labs(title = "Boxplot de Total Spent", x = "", y = "Total Spent") +
+  theme_minimal()
+
+ggarrange(b1,b2, ncol=2, nrow=1)
+
+```
+
+Based on the comparison between the mean and median, for Price Per Unit and Total Spent there are no drastic differences, so I do not expect a large number of outliers if any exist (Price Per Unit: mean = 2.95, median = 3.00; Total Spent: mean = 8.00, median = 8.92).
+
+Then, I analyzed boxplots for each variable in more detail:
+
+There are no data points beyond |1.5 * IQR| (absolute value) for Price Per Unit.
+
+There is not a large number of data points beyond |1.5 * IQR| for Total Spent, but a few outliers do exist.
+
+
+
+
+## b) Knowing that January 1st, 2023 was a Sunday, answer:
+
++ i. Which day of the week has the fewest transactions?
+
++ ii. Which day of the week has the most transactions?
+
++ iii. How many transactions were made on Fridays during that year?
+
+
+```{r}
+
+cafe$`Transaction Date` = as.Date(cafe$`Transaction Date`, format = "%Y-%m-%d")  
+cafe <- cafe[!is.na(cafe$`Transaction Date`), ] 
+cafe$`Day of Week` <- weekdays(cafe$`Transaction Date`) 
+
+
+transacciones_por_dia <- cafe %>%
+            group_by(`Day of Week`) %>%
+            summarise(nro_transacciones = n()) 
+
+knitr::kable(transacciones_por_dia, 
+             format = "html", caption = "Transactiosn per week", 
+             align = 'r')
+
+```
+
+```{r}
+max_transacciones <- transacciones_por_dia %>%
+  filter(nro_transacciones == max(nro_transacciones))
+max_transacciones 
+
+min_transacciones <-transacciones_por_dia %>%
+  filter(nro_transacciones == min(nro_transacciones)) 
+min_transacciones
+```
+
+Answering all three questions together:
+It can be observed that the day of the week with the most transactions was Friday (number of transactions = 1,388), and the day with the least transactions was Tuesday (1,311 transactions).
+
+
+## c) Identify the month with the highest number of transactions and the month with the lowest number of transactions.
+
+
+```{r}
+cafe$`Transaction Date` = as.Date(cafe$`Transaction Date`, format = "%Y-%m-%d")
+cafe$month = format(cafe$`Transaction Date`, "%m")
+
+transacciones_por_mes <- cafe %>%
+            group_by(month) %>%
+            summarise(nro_transacciones = n()) 
+
+transacciones_por_mes <- na.omit(transacciones_por_mes)
+
+knitr::kable(transacciones_por_mes, 
+             format = "html", caption = "Monthly transactions", 
+             align = 'r')
+
+```
+
+
+
+```{r}
+max_transacciones_mes <- transacciones_por_mes %>%
+  filter(nro_transacciones == max(nro_transacciones))
+max_transacciones_mes
+
+min_transacciones_mes <-transacciones_por_mes %>%
+  filter(nro_transacciones == min(nro_transacciones)) 
+min_transacciones_mes
+```
+
+
+It can be observed that the month with the highest number of transactions is October (10), and the month with the lowest is February (02).
+
+## d) Generate chronologically ordered bar charts representing these results, and determine whether there is an evident trend.
+
+
+```{r,fig.width=12, fig.height=8, fig.align='center'}
+transacciones_por_dia$`Day of Week` <- factor(transacciones_por_dia$`Day of Week`,
+                                              levels = c('lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'))
+
+c1 = ggplot(transacciones_por_dia, aes(x = `Day of Week`, y = nro_transacciones, fill=`Day of Week`)) +
+  geom_bar(stat = "identity",  color = "black") +  
+labs(title = "Number of Transactions\nby Day of the Week",
+     x = "Day of the Week",
+     y = "Number of Transactions")+
+  scale_color_viridis(discrete = TRUE) +
+  theme_minimal() + 
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+c2 = ggplot(transacciones_por_mes, aes(x = month, y = nro_transacciones, fill = month)) +
+  geom_bar(stat = "identity",  color = "black") +  
+labs(title = "Number of Transactions\nby Month of the Year",
+     x = "Month",
+     y = "Number of Transactions") +
+  scale_color_viridis(discrete = TRUE) +
+  theme_minimal()
+
+ggarrange(c1,c2, ncol=2, nrow=1)
+
+```
+
+
+
+# *Part 3: Data Completion and Correction*
+
+## a) The following property holds:
+
+Quantity × Price Per Unit = Total Spent.
+
+Since each Item has a constant price throughout the year, the following menu is provided:
+
+* Cake -> 3
+* Juice -> 3
+* Coffee -> 2
+* Cookie -> 1
+* Salad -> 5
+* Sandwich -> 4
+* Smoothie -> 4
+* Tea -> 2
+
+Complete the Price Per Unit column such that, whenever an NA, ERROR, or UNKNOWN value appears, it is replaced with the corresponding price for the Item according to the provided menu. If the Item is also NA, ERROR, or UNKNOWN, leave the value as NA.
+
+```{r}
+missing_price_per_unit <- cafe %>% filter(
+                                          (is.na(`Price Per Unit`) | (`Price Per Unit` %in% c("ERROR", "UNKNOWN")) & 
+                                          (is.na(Item) | (Item %in% c("ERROR", "UNKNOWN")) 
+                                            )))
+
+nrow(missing_price_per_unit)
+```
+
+
+```{r}
+precios <- c(Cake = 3, Juice = 3, Coffee = 2, Cookie = 1, Salad = 5, Sandwich = 4, Smoothie = 4, Tea = 2)
+cafe$Item = as.factor(cafe$Item )
+
+cafe <- cafe %>%
+  mutate(`Price Per Unit` = case_when(
+    `Item` == "Cookie" & ((is.na(`Price Per Unit`) | (`Price Per Unit` %in% c("ERROR", "UNKNOWN")))) ~ precios["Cookie"],
+    
+    `Item` == "Coffee" & ((is.na(`Price Per Unit`) | (`Price Per Unit` %in% c("ERROR", "UNKNOWN")))) ~ precios["Coffee"],
+    
+    `Item` == "Cake" & ((is.na(`Price Per Unit`) | (`Price Per Unit` %in% c("ERROR", "UNKNOWN")))) ~ precios["Cake"],
+    
+    `Item` == "Sandwich" & ((is.na(`Price Per Unit`) | (`Price Per Unit` %in% c("ERROR", "UNKNOWN")))) ~ precios["Sandwich"],
+    
+    `Item` == "Smoothie" & ((is.na(`Price Per Unit`) | (`Price Per Unit` %in% c("ERROR", "UNKNOWN")))) ~ precios["Smoothie"],
+    
+    `Item` == "Tea" & ((is.na(`Price Per Unit`) | (`Price Per Unit` %in% c("ERROR", "UNKNOWN")))) ~ precios["Tea"],
+    
+    `Item` == "Juice" & ((is.na(`Price Per Unit`) | (`Price Per Unit` %in% c( "ERROR", "UNKNOWN")))) ~ precios["Juice"],
+    
+    `Item` == "Salad" & ((is.na(`Price Per Unit`) | (`Price Per Unit` %in% c("ERROR", "UNKNOWN")))) ~ precios["Salad"],
+      
+    TRUE ~ `Price Per Unit`
+  ))
+
+
+```
+
+
+### Note: The values of Tea with Price Per Unit = 1.5 have not been modified because no instructions were given regarding these cases. The proposed sanity check in the assignment may differ because of this.
+
+
+## b) Complete the Quantity, Price Per Unit, and Total Spent columns in cases where only one of these three variables is missing, using the relationship between them. If it is not possible to complete the value, leave it as NA.
+
+
+```{r}
+cafe_dos_faltantes <- cafe %>%
+  mutate(
+    invalid_values_count = rowSums(
+      cbind(
+        is.na(`Price Per Unit`) | `Price Per Unit` %in% c("ERROR", "UNKNOWN"),
+        is.na(`Total Spent`) | `Total Spent` %in% c("ERROR", "UNKNOWN"),
+        is.na(Quantity) | Quantity %in% c("ERROR", "UNKNOWN")
+      )
+    )
+  ) %>%
+  filter(invalid_values_count == 2) %>%
+    select(-invalid_values_count)  
+
+sum(nrow(cafe_dos_faltantes))  
+
+```
+
+
+
+```{r}
+cafe <- cafe %>%
+  mutate(
+    Quantity = case_when(
+      Quantity %in% c("ERROR", "UNKNOWN") ~ NA_real_,
+      TRUE ~ as.numeric(Quantity)
+    ),
+    
+    `Price Per Unit` = case_when( 
+      `Price Per Unit` %in% c("ERROR", "UNKNOWN") ~ NA_real_,
+      TRUE ~ as.numeric(`Price Per Unit`)
+    ),
+    
+    `Total Spent` = case_when(
+      `Total Spent` %in% c("ERROR", "UNKNOWN") ~ NA_real_,
+      TRUE ~ as.numeric(`Total Spent`)
+    ),
+    
+    Quantity = case_when(
+      is.na(Quantity) & !is.na(`Price Per Unit`) & !is.na(`Total Spent`) ~ `Total Spent` / `Price Per Unit`,
+      TRUE ~ Quantity
+    ),
+    
+    `Price Per Unit` = case_when(
+      is.na(`Price Per Unit`) & !is.na(Quantity) & !is.na(`Total Spent`) ~ `Total Spent` / Quantity,
+      TRUE ~ `Price Per Unit`
+    ),
+    
+    `Total Spent` = case_when(
+      is.na(`Total Spent`) & !is.na(Quantity) & !is.na(`Price Per Unit`) ~ Quantity * `Price Per Unit`,
+      TRUE ~ `Total Spent`
+    )
+  )
+
+
+```
+
+
+
+```{r}
+# I check that I have those rows in the df_cafe dataframe — I create cafe_2_missing.
+cafe_2_missing <- cafe %>%  filter(`Transaction ID` %in% cafe_dos_faltantes$`Transaction ID`)
+```
+
+
+
+## c) Complete the Item column by referencing the value of Price Per Unit. Specifically, if Price Per Unit is 3, assume that a Cake was purchased (and not a Juice); similarly, if it is 4, assume that a Sandwich was purchased (and not a Smoothie). If it is not possible to determine, leave the value as NA.
+
+
+```{r}
+cafe <- cafe %>%
+  mutate(Item = case_when(
+    is.na(Item) | Item == "ERROR" | Item == "UNKNOWN" ~ case_when(
+      `Price Per Unit` == 1 ~ "Cookie",
+      `Price Per Unit` == 2 ~ NA_character_, 
+      `Price Per Unit` == 3 ~ "Cake",
+      `Price Per Unit` == 4 ~ "Sandwich",
+      `Price Per Unit` == 5 ~ "Salad",
+      TRUE ~ NA_character_  
+    ),
+    
+    TRUE ~ Item
+  ))
+
+```
+
+
+## d) As a verification (“sanity check”), after performing the three sequential completion processes, the following should be obtained:
+
+
+```{r}
+sub_df = cafe[, c("Item", "Price Per Unit", "Quantity", "Total Spent")]
+na_count <- sapply(sub_df, function(x) sum(is.na(x)))
+na_count 
+```
+
+
+Note: The Item column does not return 120 as expected, while the others do. I haven't found the error in my code. It may be related to the fact that the provided cafe dataset includes Price Per Unit values equal to 1.5.
+
+## e) Fill in the following columns: Item, Price Per Unit, Quantity, Total Spent, Payment Method, Location, and Transaction Date using the mode (most frequent value, excluding NA, ERROR, and UNKNOWN) for each respective column. This means replacing not only NA values but also ERROR and UNKNOWN.
+
+```{r}
+
+get_mode <- function(x) {
+  x <- x[!x %in% c(NA, "ERROR", "UNKNOWN")]  
+  if(length(x) == 0) return(NA)  
+  uniq_x <- unique(x)
+  uniq_x[which.max(tabulate(match(x, uniq_x)))] 
+}
+
+
+cafe <- cafe %>%
+  mutate(
+    Item = ifelse(is.na(Item) | Item %in% c("ERROR", "UNKNOWN"), get_mode(Item), Item),
+    `Price Per Unit` = ifelse(is.na(`Price Per Unit`) | `Price Per Unit` %in% c("ERROR", "UNKNOWN"), get_mode(`Price Per Unit`), `Price Per Unit`),
+    Quantity = ifelse(is.na(Quantity) | Quantity %in% c("ERROR", "UNKNOWN"), get_mode(Quantity), Quantity),
+    `Total Spent` = ifelse(is.na(`Total Spent`) | `Total Spent` %in% c("ERROR", "UNKNOWN"), get_mode(`Total Spent`), `Total Spent`),
+    `Payment Method` = ifelse(is.na(`Payment Method`) | `Payment Method` %in% c("ERROR", "UNKNOWN"), get_mode(`Payment Method`), `Payment Method`),
+    Location = ifelse(is.na(Location) | Location %in% c("ERROR", "UNKNOWN"), get_mode(Location), Location),
+    `Transaction Date` = ifelse(is.na(`Transaction Date`) | `Transaction Date` %in% c("ERROR", "UNKNOWN"), get_mode(`Transaction Date`), `Transaction Date`)
+  )
+```
+
+
+
+## Finally, I check that all values have been filled; there are no nulls (NAs) or error strings ("ERROR", "UNKNOWN").
+
+
+
+```{r}
+sapply(cafe, function(x) any(x %in% c(NA, "ERROR", "UNKNOWN")))
+```
+

@@ -1,0 +1,657 @@
+---
+title: "AID 2025 - Project 2 - Statistical Tests"
+subtitle: ""
+author: "Yair B. Barnatan"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: cerulean
+    toc: true
+    toc_float:
+      collapsed: true
+    highlight: tango       
+    code_folding: hide     
+---
+
+# *Topics*
+
++ Data cleaning and preprocessing
+
++ Sample size calculation
+
++ Descriptive analysis, visualization of information and univariate data
+
++ Normality test 
+
++ Correlation (linear)
+
++ T-test
+
++ Independency chi-squared test
+
++ Boostrap
+
++ Mean Distance
+
+
+# *Import libraries*
+
+```{r , warning=FALSE, error=FALSE, message=FALSE}
+library(ggplot2)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(knitr) 
+library(kableExtra)
+library(ggpubr)
+library(viridis)
+library(stringr)
+library(purrr)
+library(pwr)
+```
+
+
+
+# *Data loading*
+
+```{r, warning=FALSE, error=FALSE, message=FALSE}
+#   Data Source
+#   https://www.kaggle.com/code/yadrsv/eda-mobiles-dataset/input
+
+pathBase = dirname(rstudioapi::getSourceEditorContext()$path)
+celulares = read_csv(paste0(pathBase,"/Mobiles_Dataset_2025.csv"))
+attach(celulares)
+```
+
+
+# *2. Data Cleaning and Standardization*
+
+Analyze and standardize the format of numeric columns:
+
+* Remove non-numeric characters.  
+* Rename columns to specify their units.
+
+**Example:**
+
+* From: `Launched Price (USA)` with values like `USD 499`.  
+* To: `Launched Price (USA)_USD` with numeric values (`499`).
+
+Apply the above to the following columns:  
+`Screen Size`, `Battery Capacity`, `Back Camera`, `Front Camera`, `RAM`, `Mobile Weight`, and `Launched Price (USA)`.
+
+**Tip:** Create a reusable general-purpose function.
+
+[!] *NOTE:* The chosen criterion for columns with multiple values  
+(e.g., `Back Camera` with two values due to dual cameras) →  
+Use the **highest** value.  
+This was done to simplify the assignment;  
+in a more thorough real-world scenario, new columns could have been created  
+(e.g., `Rear Camera 1`, `Rear Camera 2`, etc.).
+
+
+
+
+```{r}
+# The function:
+#   Takes a text column with embedded numbers (like "12GB + 8GB" or "203g"),
+#   Extracts the numbers it contains,
+#   Keeps the highest value (although it can be modified to sum, etc.),
+#   Renames the column with a new name
+
+emprolijar_columnas = function(data, columna_original, nuevo_nombre) { 
+  data %>%
+    rename(!!nuevo_nombre := all_of(columna_original)) %>% 
+    mutate(!!nuevo_nombre := str_extract_all(.data[[nuevo_nombre]], "\\d+"), # Regex
+           !!nuevo_nombre := map_dbl(.data[[nuevo_nombre]], ~ max(as.numeric(.)))) 
+}
+
+```
+
+
+```{r}
+celulares = emprolijar_columnas(celulares, "Mobile Weight", "MobileWeigth_g")
+celulares = emprolijar_columnas(celulares, "RAM", "RAM_GB")
+celulares = emprolijar_columnas(celulares, "Front Camera", "FrontCamera_MP")
+celulares = emprolijar_columnas(celulares, "Back Camera", "BackCamera_MP")
+celulares = emprolijar_columnas(celulares, "Battery Capacity", "BatteryCapacity_mAh")
+celulares = emprolijar_columnas(celulares, "Screen Size", "ScreenSize_in")
+celulares = emprolijar_columnas(celulares, "Launched Price (USA)", "LaunchedPriceUSA_USD")
+
+```
+
+
+# *3. Sample Size Calculation – Theoretical Exercise Without Dataset*
+
+We believe that the average brightness of cell phones is 500 nits, but we want to perform a statistical test to confirm what we already assume.
+
+### a) State the hypotheses H₀ and H₁
+
+* In statistical terms:
+
+  * H₀: $\mu_0$ = 500  
+  * H₁: $\mu_0 \neq$ 500
+
+* In terms of the problem:
+
+  * H₀: The average brightness of mobile phones is 500 nits.  
+  * H₁: The average brightness of mobile phones is different from 500 nits.
+
+---
+
+### b) Is the alternative hypothesis one-tailed or two-tailed?
+
+Since we want to test whether the brightness is exactly 500 nits, the test is **two-tailed**, because the actual brightness could be either greater than or less than 500 nits.
+
+---
+
+### c) Before calculating the sample size, identify the type I (α) and type II (β) errors of our experiment, based on the following conditions:
+
+* We want to detect differences of ±100 nits (or more) **99% of the time** when a real difference $\delta$ that large exists.
+
+  * Type I error (α) is the probability of rejecting the null hypothesis when it is actually true.  
+    If we want the proportion of times the null hypothesis is wrongly rejected to be 1%, then $\alpha = 0.01$.
+
+* We want the experiment, if repeated many times, to reject the null hypothesis **1% of the time under H₀**.  
+  (This reinforces that $\alpha = 0.01$.)
+
+  * Type II error (β) is the probability of **not rejecting the null** when it is false.  
+    In this case, we want to detect real differences of ±100 nits (or more) **99% of the time**, so $\beta = 0.01$.
+
+---
+
+### d) Sample size calculation (manual)
+
+Sample size formula:  
+$n = \left(\frac{z_{1 - \alpha/2} + z_{1 - \beta}}{\delta / \sigma}\right)^2$
+
+* Minimum detectable difference: $\delta = 100$  
+* Known standard deviation: $\sigma = 175$  
+* Significance level: $\alpha = 0.01 \Rightarrow z(0.995) = 2.576$  
+* Test power: $1 - \beta = 0.99 \Rightarrow z(0.99) = 2.326$
+
+Replacing values:  
+$n = \left(\frac{2.576 + 2.326}{100 / 175}\right)^2 \approx 73.58$
+
+---
+
+### e) Recalculate sample size using R
+
+
+```{r,warning=FALSE, error=FALSE, message=FALSE}
+delta = 100 
+sigma = 175
+D = delta/sigma  
+significancia = 0.01 
+potencia_del_test = 0.99  
+
+tamanio_muestral = pwr.norm.test(d = D, sig.level = significancia,
+                                 power = potencia_del_test, alternative = "two.sided")
+tamanio_muestral
+```
+* According to the calculation, the sample size is 73.59, matching the manual computation.  
+Since the sample size must be an integer (as it refers to experimental units), it is rounded up to the next whole number — that is, 74.
+
+# *4. Descriptive Statistics and Visualizations*
+
+## Descriptive Statistics
+
+For the cleaned columns:
+
+  * Calculate: mean, median, minimum, maximum, and standard deviation.
+  * Identify outliers using a non-visual method (e.g., statistical tests, Z-scores, IQR, or any method you prefer).
+  * Comment if you find any strong relationships or correlations between variables (you will use them later).
+
+  
+```{r,fig.width=8, fig.height=8, warning=FALSE, error=FALSE, message=FALSE}
+cels_num  <- select_if(celulares, is.numeric)
+
+resumen_cels = data.frame(
+  Media = sapply(cels_num, mean, na.rm = TRUE),
+  Mediana = sapply(cels_num, median, na.rm = TRUE),
+  Minimo = sapply(cels_num, min, na.rm = TRUE),
+  Maximo = sapply(cels_num, max, na.rm = TRUE),
+  SD = sapply(cels_num, sd, na.rm = TRUE))
+
+resumen_cels = round(resumen_cels, digits = 3) 
+
+resumen_cels  %>%
+  kable(caption = "Summary for clean numeric columns of the Mobile Dataset", format = "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+
+```
+
+Outlier detection using the IQR method (interquartilic range), it is easy and fast to be implemented.
+
+```{r}
+cels_num %>%
+  map_df(~ { 
+    q1 =  quantile(.x, 0.25, na.rm = TRUE) 
+    q3 = quantile(.x, 0.75, na.rm = TRUE)
+    iqr_val =  q3 - q1 
+    lim_inf =  q1 - 1.5 * iqr_val 
+    lim_sup = q3 + 1.5 * iqr_val 
+  
+    .x < lim_inf | .x > lim_sup  
+  }) -> outliers_df 
+
+outliers_count =  data.frame(nro_outliers = colSums(outliers_df == TRUE))
+
+outliers_count %>%
+  kable(caption = "Numebr of outliers per column in the dataset", format = "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+```
+
+Are there correlation between variables? study this, as this will be important later on.
+
+```{r}
+matriz_corr = cor(cels_num)
+matriz_corr = round(matriz_corr, 3 )
+matriz_corr[upper.tri(matriz_corr, diag = TRUE)] = "" 
+
+data.frame(matriz_corr)  %>%
+  kable(caption = "Correlation matrix between dataset's variables", format = "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+```
+
+Analyzing the obtained correlation matrix, knowing that values close to 1 indicate a positive correlation (both variables increase together), values close to -1 indicate a negative correlation (one increases while the other decreases), and values around 0 indicate no correlation, we can observe:
+
+  * There are no extremely strong positive or negative correlations (no values clearly close to 1 or -1).
+  * RAM shows a moderate correlation with FrontalCamera and BackCamera, and a slightly weaker correlation with LaunchedPrice.
+  * FrontalCamera shows a moderate correlation with BackCamera.
+  * Some variables show no correlation at all due to values being close to 0 (e.g., BatteryCapacity with ScreenSize, and ScreenSize with LaunchedPrice).
+
+## Visualizations
+
+  * Create histograms for at least two variables and describe their shapes (symmetric, skewed, multimodal, etc.).
+  * Generate boxplots to detect outliers. If an outlier is found in the USD Price column, remove that row.
+  * Additionally, compare groupings by Brand or Model when possible.
+  * Suggestion: Use the functions `summary()`, `hist()`, `boxplot()`, and the **ggplot2** package.
+
+  
+
+```{r}  
+a1 = ggplot(cels_num, aes(x = MobileWeigth_g)) +
+  geom_histogram(binwidth = 20, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "a) Mobile Weight", x = "Mobile Weight (g)", y = "Frequency") +
+  theme_minimal()
+
+
+a2 = ggplot(cels_num, aes(x = LaunchedPriceUSA_USD)) +
+  geom_histogram(binwidth = 50, fill = "springgreen", color = "black", alpha = 0.7) +
+  labs(title = "b) Launched Price USA", x = "Launched Price USA (USD)", y = "Frequency") +
+  theme_minimal()
+
+ggarrange(a1,a2, ncol=2, nrow=1)
+
+```
+
+
+```{r}
+
+b1 = ggplot(cels_num, aes(x = "", y = MobileWeigth_g)) +
+  geom_boxplot(fill = "blue", outlier.color = "red", outlier.shape = 16) +
+  labs(title = "a) Mobile Weigth",
+       y = "Weight (g)",
+       x = "") +
+  theme_minimal()
+
+b2 = ggplot(cels_num, aes(x = "", y = LaunchedPriceUSA_USD))  +
+  geom_boxplot(fill = "springgreen", outlier.color = "red", outlier.shape = 16) +
+  labs(title = "b) Launched Price USA",
+       y = "Price (USD)",
+       x = "") +
+  theme_minimal()
+
+ggarrange(b1,b2, ncol=2, nrow=1)
+
+```
+
+
+## Analysis:
+
+  * Separate histograms show the distribution of mobile phone weights and prices. In both cases, the distribution is not symmetric; instead, it is skewed to the left.
+  
+  * In the case of weights, the mode appears to be around 200 grams. For prices, there is no single mode — there is a broad price range with higher frequency, mainly concentrated between 200–400 USD.
+  
+  * Analyzing the boxplots allows us to visualize not only the distribution and skewness of the data but also the presence of outliers. The weight of a mobile phone can vary significantly depending on its type, size, materials, and battery. However, based on some Argentine online retailers (Frávega, MercadoLibre, OnCity), phones typically do not weigh more than 300–350 grams. Since no outliers have been cleaned up to this point in the project, we can observe in the weight histogram that there are phones exceeding that value (the same is evident in the boxplot).
+
+  * Upon further inspection, the histogram of 'b' shows a small number of phones with a price value of around 1500 USD. These could either be outliers or extremely new and expensive models.
+  
+  * **Note:** I have decided to keep these price and weight values that may be outliers. They are not overly extreme (e.g., there are no phones weighing 3 kg or costing 50,000 USD).
+
+
+
+```{r}
+Q1 = quantile(celulares$LaunchedPriceUSA_USD, 0.25, na.rm = TRUE)
+Q3 = quantile(celulares$LaunchedPriceUSA_USD, 0.75, na.rm = TRUE)
+IQR_val = Q3 - Q1
+
+lim_inf = Q1 - 1.5 * IQR_val
+lim_sup = Q3 + 1.5 * IQR_val
+
+celulares  = celulares %>% filter(LaunchedPriceUSA_USD >= lim_inf & LaunchedPriceUSA_USD <= lim_sup)
+
+```
+
+```{r , fig.width=2, fig.height=4, fig.align='center'}
+ggplot(celulares, aes(y = LaunchedPriceUSA_USD)) +
+  geom_boxplot(fill = "orange", outlier.color = "red4", outlier.shape=5) +
+  labs(title = "Launch price", y = "Launch price (USD)") +
+  theme_minimal() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_blank())
+
+```
+
+
+```{r , fig.width=10, fig.height=8, fig.align='center'}
+cels_brand = celulares %>% select(`Company Name`, LaunchedPriceUSA_USD)
+
+ggplot(cels_brand, aes(x = `Company Name`, y = LaunchedPriceUSA_USD)) +
+  geom_boxplot(fill = "lightblue", outlier.color = "red4") +
+  labs(title = "Launched price per cell brand",
+       x = "Brand", y = "Launch price (USD)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+  
+* In this way, we can see that when stratifying the data by mobile phone brand, the device price shows outliers for some brands but not all.
+* The brands with outliers are **Motorola**, **OnePlus**, **Sony**, **Tecno**, and **Vivo**.
+* This occurs even though outliers in the `LaunchedPriceUSA` column were previously removed, because now the data is being separated by brand, whereas earlier the entire price distribution was analyzed as a whole.
+
+  
+  
+```{r}
+nro_Graphs = length(unique(celulares$`Company Name`))
+nro_Graphs
+
+# Note: Analysis by model is not performed because it would require generating 'nro_Graphs' plots, each of which would need to be broken down by model.
+
+```
+
+# *5. Normality Test*
+
+* Select any 2 columns of your choice and apply the **Shapiro-Wilk test** using `shapiro.test()`.
+* Create a **QQ plot** for visualization.
+* Finally, **interpret the results** based on the p-value — decide whether to accept or reject the assumption of normality using a significance level of α = 5%.
+
+
+```{r}
+shapiro.test(celulares$RAM_GB)
+shapiro.test(celulares$LaunchedPriceUSA_USD)
+```
+
+Analytically, the Shapiro-Wilk test evaluates whether the data comes from a normal distribution  
+(H₀: the data follows a normal distribution).
+
+  * For **RAM** → p-value = 2 × 10⁻¹⁶ → reject H₀ → RAM does **not** follow a normal distribution.
+  * For **LaunchedPrice** → p-value = 2 × 10⁻¹⁶ → reject H₀ → LaunchedPrice does **not** follow a normal distribution.
+
+
+```{r , fig.width=6, fig.height=3, fig.align='center'}
+c1 = ggplot(celulares, aes(sample = RAM_GB)) +
+  stat_qq(color = "green", alpha = 0.6) +
+  stat_qq_line(color = "red") +
+  labs(title = "RAM (GB)",
+       x = "Theoretical quantiles", y = "Sampled quantiles") +
+  theme_minimal()
+
+c2 =  ggplot(celulares, aes(sample = LaunchedPriceUSA_USD)) +
+  stat_qq(color = "darkblue", alpha = 0.6) +
+  stat_qq_line(color = "red") +
+  labs(title = "Launched Price (USD)",
+       x = "Theoretical quantiles", y = "Sampled quantiles") +
+  theme_minimal()
+
+
+ggarrange(c1, c2, ncol=2, nrow=1)
+```
+  
+  
+## Analysis of the QQ plots:
+
+In both cases, we observe significant distortions from what is expected under a normal distribution.  
+In a QQ plot, the points representing the observed and expected quantiles of a normal distribution  
+should fall on or near the 45-degree reference line.  
+However, this is not the case here — there are substantial deviations,  
+which leads to the conclusion that these variables **do not follow a normal distribution**.
+
+# *6. Correlation and Significance*
+
+Studying the relationship between **Launched Price USA (USD)** and **RAM (GB)**
+  
+  
+```{r}
+ggplot(celulares, aes(x = LaunchedPriceUSA_USD, y = RAM_GB)) +
+  geom_point(color = "steelblue", size = 3, alpha = 0.7) +
+  labs(title = "Launched price vs RAM",
+       x = "Launched price in USA (USD)",
+       y = "RAM (GB)") +
+  theme_minimal()
+
+```
+
+
+```{r}
+cor.test(celulares$RAM_GB, celulares$LaunchedPriceUSA_USD, method = 'pearson')
+```
+
+
+```{r}
+cor.test(celulares$RAM_GB, celulares$LaunchedPriceUSA_USD, method = "spearman")
+```
+
+
+## Analysis:
+
+* The scatterplot of **LaunchedPrice vs. RAM** shows a trend indicating that as the device’s RAM capacity increases, so does its price.
+* The **Pearson correlation analysis** between these two variables reveals a **weak to moderate positive correlation** (r = 0.36), with a p-value less than 2.2 × 10⁻¹⁶, which is significant at a 5% alpha level.
+* **Note:** Pearson correlation assumes that the variables follow a normal distribution. When using **Spearman correlation**, which relaxes this assumption, we obtain r = 0.43, also statistically significant.
+
+---
+
+# *7. One-Sample t-Test*
+
+Hypothesis setup for **Mobile Weight**, using a one-sample t-test:
+
+  * H₀: µ ≤ 180 g  
+  * H₁: µ > 180 g
+
+   
+   
+```{r}
+t.test(celulares$MobileWeigth_g , mu = 180 , alternative = "greater")
+```
+
+## Analysis of the t-test:
+
+  * *Test result:* t = 13.96 → p-value = 2.2 × 10⁻¹⁶ → with α = 0.05, the test is statistically significant.
+  * *Decision rule:* reject H₀ → Interpretation: on average, mobile phones weigh more than 180g.
+
+---
+
+# *8. Chi-Square Test [Test of Independence]*
+
+Create a new categorical variable called **HighBattery**:
+
+  * Assign the value **"High"** if `BatteryCapacity_mAh` is greater than or equal to the median.
+  * Assign the value **"Low"** if it is below the median.
+
+Then, select another existing categorical variable (for example, `Brand` or `Model`).
+
+Build a contingency table and apply the `chisq.test()` function.  
+Visualize the results using a stacked bar plot with: `geom_bar(position="fill")`.
+
+```{r}
+mediana_bateria <- median(celulares$BatteryCapacity_mAh, na.rm = TRUE)
+celulares$HighBattery <- ifelse(celulares$BatteryCapacity_mAh >= mediana_bateria, "Alta", "Baja")
+tabla <- table(celulares$HighBattery, celulares$`Company Name`)
+```
+
+
+```{r}
+tabla_conting = data.frame(tabla)
+colnames(tabla_conting) <- c("Battery Capacity", "Brand", "Frequency")
+
+tabla_conting   %>%
+  kable(caption = "Contingency table for Brand and Battery Capacity", format = "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+
+```
+
+
+```{r}
+chisq.test(tabla)
+```
+
+
+```{r, fig.align='center', fig.width= 10, fig.height=8}
+ggplot(tabla_conting, aes(x = Brand, y = Frequency, fill = `Battery Capacity`)) +
+  geom_bar(stat = "identity", position = "fill") + 
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_fill_manual(values = c("Alta" ="#FC4E07", "Baja" = "#E7B800")) +
+  labs(title = "Proportion of High Battery per Brand",
+       y = "Proportion",
+       x = "Brand",
+       fill = "Battery Capacity") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Analysis:
+
+* Hypotheses:
+  + H0: The two variables are independent.
+  + H1: There is an association (dependence) between the two variables.
+  
+* According to the Chi-square test, the result is significant at α = 0.05 because the p-value < 2.2 × 10⁻¹⁶.
+* Interpretation: since p-value < α → reject H₀ → there is a dependence between device brand and battery capacity.
+* Note: The warning from R indicates that the Chi-square approximation might be incorrect because some expected frequencies are less than 5.  
+  In such cases, it is advisable to use Fisher's exact test if the contingency table is 2 × 2.  
+  We have not covered what to do in other cases.
+
+---
+
+# *9. Bootstrap to Assess the Uncertainty of the IQR*
+
+Suppose we want to estimate how dispersed the launch prices of mobile phones in the USA are. We will use the column **Launched Price (USA)**. The goal is to:
+
+* Estimate the IQR (interquartile range) of the launch prices.
+* Evaluate how confident we are about that estimated value using bootstrap.
+
+  + a) Calculate the IQR directly on all available data in the **Launched Price (USA)** column.
+  + b) Perform a non-parametric bootstrap to obtain a distribution of possible IQR values. Perform at least 10,000 samples.
+    * Take many samples with replacement of the same size as the original dataset.
+    * Calculate the IQR of each sample.
+    * Save all obtained values.
+
+    *(Hint: You can use a for loop or the `replicate()` function — whichever is more convenient.)*
+
+  + c) Calculate a 95% confidence interval for the IQR using the 2.5th and 97.5th percentiles of the bootstrap distribution.
+  + d) Plot a histogram of the bootstrap distribution of the IQR and mark the confidence interval limits on the plot.
+
+### Estimation of the IQR of Launch Prices
+
+
+```{r}
+# -> Item a
+iqr_observado <- IQR(celulares$LaunchedPriceUSA_USD, na.rm = TRUE) 
+iqr_observado
+```
+
+### Estimation of IQR via Bootstrap
+
+```{r}
+set.seed(42) 
+
+n <- length(celulares$LaunchedPriceUSA_USD)
+
+bootstrap_iqrs <- replicate(10000, {
+  muestra <- sample(celulares$LaunchedPriceUSA_USD, size = n, replace = TRUE)
+  IQR(muestra, na.rm = TRUE)
+})
+
+```
+
+
+### Calculation of the 95% Confidence Interval (CI) for the IQR of the distribution obtained by bootstrap.
+
+```{r}
+# ->  Item c
+IC = quantile(bootstrap_iqrs, probs = c(0.025, 0.975))
+IC
+```
+
+
+### Histogram of the bootstrap distribution of the IQR.
+
+```{r}
+# -> Item d
+bootstrap_df <- data.frame(IQR = bootstrap_iqrs) 
+
+ggplot(bootstrap_df, aes(x = IQR)) +
+  geom_histogram(fill = "green", color = "black", bins = 30) +
+  geom_vline(xintercept = IC, color = "red", linetype = "dashed", linewidth = 0.5) +
+  geom_vline(xintercept = iqr_observado, color = "blue",  linewidth = 1.2) +
+  labs(title = "Bootstrap distribution for IQR",
+       x = "IQR Launched Price (USA)",
+       y = "Frequency") +
+  annotate("text", x = IC[1], y = Inf, label = "2.5%", vjust = 1.25, color = "red") + 
+  annotate("text", x = IC[2], y = Inf, label = "97.5%", vjust = 1.25, color = "red") +
+  annotate("text", x = iqr_observado, y = Inf, label = "Observado", vjust = 1.25, color = "darkblue") +
+  theme_minimal()
+
+```
+
+
+# *10. Average Distances*
+
+Select these 2 columns from the dataset: **Back Camera_MP** and **Front Camera_MP**,  
+and standardize them if they are still in their original scale.
+
+* a) Calculate the average Euclidean distance between all rows for these columns.
+* b) Repeat the same procedure for the combinations:
+
+     + Back Camera_MP and Mobile Weight_g.
+     + Front Camera_MP and Mobile Weight_g.
+
+        
+```{r}     
+get_dist_euclidea <- function(DF, column1, column2, method = "euclidean") {
+  # DF: data frame
+  # column1, column2: names (strings) of the columns to calculate the distance on
+  # method: distance method (default is "euclidean")
+
+  data_subset <- DF[, c(column1, column2)]
+  data_scaled <- scale(data_subset)
+  dist_matrix <- dist(data_scaled, method = method)
+  avg_dist <- mean(dist_matrix)
+  return(avg_dist)
+}
+
+
+```
+
+
+Distance for Back Camera and Front Camera.
+```{r}
+get_dist_euclidea(celulares, 'BackCamera_MP', 'FrontCamera_MP', 'euclidean')
+```
+
+
+Distance for Back Camera and Mobile Weigth
+```{r}
+get_dist_euclidea(celulares, 'BackCamera_MP', 'MobileWeigth_g', 'euclidean')
+```
+
+
+Distance for Front Camera and Mobile Weigth
+```{r}
+get_dist_euclidea(celulares, 'FrontCamera_MP', 'MobileWeigth_g', 'euclidean')
+```

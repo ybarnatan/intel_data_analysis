@@ -22,8 +22,8 @@ This repository contains six independent data analysis projects. Each project is
 
 | Project Name                         | Badge Link                                  |
 |-------------------------------------|---------------------------------------------|
-| Exploratory Data Analysis                 | [![Project 1](https://img.shields.io/badge/Project_1-Exploratory_Data_Analysis-blue)](./gh-pages/Project_1_Exploratory_Data_Analysis) |
-| Statistical Tests                        | [![Project 2](https://img.shields.io/badge/Project_2-Statistical_Tests-green)](./gh-pages/Project_2_Statistical_Tests) |
+| Exploratory Data Analysis                 | [![Project 1](https://img.shields.io/badge/Project_1-Exploratory_Data_Analysis-blue)](./Project_1_Exploratory_Data_Analysis) |
+| Statistical Tests                        | [![Project 2](https://img.shields.io/badge/Project_2-Statistical_Tests-green)](./Project_2_Statistical_Tests) |
 | Principal Component Analysis (PCA)            | [![Project 3](https://img.shields.io/badge/Project_3-PCA-orange)](./Project_3_PCA) |
 | Simple and Multiple Correspondence Analysis  | [![Project 4](https://img.shields.io/badge/Project_4-Correspondence_Analysis-red)](./Project_4_Correspondence_Analysis) |
 | ANOVA and Data Visualization           | [![Project 5](https://img.shields.io/badge/Project_5-ANOVA_and_Data_Visualization-purple)](./Project_5_ANOVA_and_Data_Visualization) |

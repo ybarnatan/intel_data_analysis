@@ -2,7 +2,7 @@
 <p align="center">
 <h1 align="center">📊 Intelligent Data Analytics</h1>
   
-<img align="center" src="images/AID_banner.png" width="550" height="300" alt="banner" />
+<img  src="images/AID_banner.png" width="550" height="300" alt="banner" />
 
 </p>
 

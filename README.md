@@ -1,15 +1,13 @@
 <!-- Banner Section -->
-<p align="center">
-<h1 align="center">📊 Intelligent Data Analytics</h1>
-  
-<img  src="images/AID_banner.png" width="550" height="300" alt="banner" />
-
-</p>
+<div align="center">
+  <h1>📊 Intelligent Data Analytics</h1>
+  <img src="images/AID_banner.png" width="550" height="300" alt="banner" />
+</div>
 
 
-<p>
+<h3>
   A collection of projects covering various topipcs of statistics and techniques for data manipulation, visualization, dimensionality reduction and analysis.
-</p>
+</h3>
 
 ---
 

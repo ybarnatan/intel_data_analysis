@@ -1,15 +1,13 @@
 <!-- Banner Section -->
-<p align="center">
-<h1 align="center">📊 Intelligent Data Analytics</h1>
-  
-<img src="images/AID_banner.png" width="500" height="300" alt="banner" />
-
-</p>
+<div align="center">
+  <h1>📊 Intelligent Data Analytics</h1>
+  <img src="images/AID_banner.png" width="550" height="300" alt="banner" />
+</div>
 
 
-<p>
+<h3>
   A collection of projects covering various topipcs of statistics and techniques for data manipulation, visualization, dimensionality reduction and analysis.
-</p>
+</h3>
 
 ---
 
@@ -20,14 +18,16 @@ This repository contains six independent data analysis projects. Each project is
 
 ### 🧠 Project Index
 
-| Project Name                         | Badge Link                                  |
+
+
+| Project Name                         | Link to project                                  |
 |-------------------------------------|---------------------------------------------|
-| Exploratory Data Analysis                 | [![Project 1](https://img.shields.io/badge/Project_1-Exploratory_Data_Analysis-blue)](./Project_1_Exploratory_Data_Analysis) |
-| Statistical Tests                        | [![Project 2](https://img.shields.io/badge/Project_2-Statistical_Tests-green)](./Project_2_Statistical_Tests) |
-| Principal Component Analysis (PCA)            | [![Project 3](https://img.shields.io/badge/Project_3-PCA-orange)](./Project_3_PCA) |
-| Simple and Multiple Correspondence Analysis  | [![Project 4](https://img.shields.io/badge/Project_4-Correspondence_Analysis-red)](./Project_4_Correspondence_Analysis) |
-| ANOVA and Data Visualization           | [![Project 5](https://img.shields.io/badge/Project_5-ANOVA_and_Data_Visualization-purple)](./Project_5_ANOVA_and_Data_Visualization) |
-| Logistic Regression |                 [![Project 6](https://img.shields.io/badge/Project_6-Logistic-yellow)](./Project_6_Logistic_Regression) |
+| Exploratory Data Analysis                 | [![Project 1](https://img.shields.io/badge/Project_1-Exploratory_Data_Analysis-blue)](https://ybarnatan.github.io/intel_data_analysis/Project_1_Exploratory_Data_Analysis/Project-1_EDA_Cafe-Dataset.html)|
+| Statistical Tests                        | [![Project 2](https://img.shields.io/badge/Project_2-Statistical_Tests-green)](https://ybarnatan.github.io/intel_data_analysis/Project_2_Statistical_Tests/Project-2_Mobiles-Dataset.html) |
+| Principal Component Analysis (PCA)            | [![Project 3](https://img.shields.io/badge/Project_3-PCA-orange)](https://ybarnatan.github.io/intel_data_analysis/Project_3_PCA/Project-3_PCA_Fifa-Dataset.html) |
+| Simple and Multiple Correspondence Analysis  | [![Project 4](https://img.shields.io/badge/Project_4-Correspondence_Analysis-red)](https://ybarnatan.github.io/intel_data_analysis/Project_4_Correspondence_Analysis/Project-4_Correspondence-analysis_Obesity-Dataset.html) |
+| ANOVA and Data Visualization           | [![Project 5](https://img.shields.io/badge/Project_5-ANOVA_and_Data_Visualization-purple)](https://ybarnatan.github.io/intel_data_analysis/Project_5_ANOVA_and_Data_Visualization/Project-5_ANOVA-and-Data-Visualization.html) |
+| Logistic Regression |                 [![Project 6](https://img.shields.io/badge/Project_6-Logistic-yellow)](https://ybarnatan.github.io/intel_data_analysis/Project_6_Logistic_Regression/Project-6_Logistic-Regression.html) |
 
 
 
